@@ -3,11 +3,16 @@ name = "phileas"
 version = "0.1.0"
 description = ""
 authors = ["Louis Dubois <louis.dubois@ssi.gouv.fr>"]
-readme = "README.md"
+readme = "Readme.md"
 
 [tool.poetry.dependencies]
 python = "^3.8"
+pyyaml = "^6.0.1"
 
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^7"
+ipdb = "^0.13.13"
 
 [build-system]
 requires = ["poetry-core"]
