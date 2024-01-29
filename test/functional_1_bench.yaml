@@ -1,0 +1,40 @@
+name: "Laser bench"
+
+alphanov_link:
+  loader: alphanov
+  device: "/dev/pdm"
+
+laser_1064:
+  loader: pdm
+  link: alphanov_link
+  address: 1
+  wavelength: 1064
+  power_wait_time: 0.150
+
+laser_980:
+  loader: pdm
+  link: alphanov_link
+  address: 2
+  wavelength: 980
+  power_wait_time: 0.150
+
+tombak:
+  loader: tombak
+  link: alphanov_link
+  address: 3
+
+inquisitor:
+  loader: inquisitor
+  address: 192.168.41.202
+
+dut:
+  device: "/dev/dut_uart"
+
+dut_3d_stage:
+  loader: newport_smc100
+  device: "/dev/newport_scm"
+  axes: ["x", "z", "y"]
+
+main_power_supply:
+  loader: virtual_power_supply
+  ip: "192.168.1.2"

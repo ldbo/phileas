@@ -1,0 +1,31 @@
+laser:
+  interface: laser
+  filter:
+    wavelength: 1064
+
+dut_power_supply:
+  interface: power_supply
+  ch1:
+    voltage: 5.0
+    limit_current: 0.1
+    connected_to: dut.power
+  connections:
+    from: ch1
+    to: dut.input
+
+dut:
+  chip: stm32f4
+
+ampli:
+  type: 1st order lowpass
+  cutoff: 3.0e8
+
+connections:
+  - from: dut_power_supply.ch1
+    to: dut.power
+  - from: dut_power_supply.ch2
+    to: ampli.power
+  - from: dut.shunt_resistor
+    to: ampli.input
+  - from: ampli.output
+    to: scope.ch1
