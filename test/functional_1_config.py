@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from typing import Any
 
-from phileas import Loader, InstrumentsFactory, register_default_loader
+from phileas import Loader, register_default_loader
 
 
 @dataclass
@@ -13,12 +12,10 @@ class AlphanovLoader(Loader):
     name = "alphanov"
     interfaces = set()
 
-    def initiate_connection(
-        self, factory: InstrumentsFactory, configuration: dict
-    ) -> Any:
+    def initiate_connection(self, configuration: dict) -> AlphanovLink:
         return AlphanovLink(configuration["device"])
 
-    def configure(self, instrument: Any, configuration: dict) -> Any:
+    def configure(self, instrument: AlphanovLink, configuration: dict) -> AlphanovLink:
         return instrument
 
 
@@ -32,13 +29,14 @@ class AlphanovLaserLoader(Loader):
     name = "pdm"
     interfaces = {"laser"}
 
-    def initiate_connection(
-        self, factory: InstrumentsFactory, configuration: dict
-    ) -> Any:
-        link: AlphanovLink = factory.bench_instruments[configuration["link"]]
+    def initiate_connection(self, configuration: dict) -> AlphanovLaser:
+        instruments = self.instruments_factory.bench_instruments
+        link: AlphanovLink = instruments[configuration["link"]]
         return AlphanovLaser(link, configuration["address"])
 
-    def configure(self, instrument: Any, configuration: dict) -> Any:
+    def configure(
+        self, instrument: AlphanovLaser, configuration: dict
+    ) -> AlphanovLaser:
         return instrument
 
 
@@ -52,13 +50,14 @@ class AlphanovTombakLoader(Loader):
     name = "tombak"
     interfaces = {"tombak"}
 
-    def initiate_connection(
-        self, factory: InstrumentsFactory, configuration: dict
-    ) -> Any:
-        link: AlphanovLink = factory.bench_instruments[configuration["link"]]
+    def initiate_connection(self, configuration: dict) -> AlphanovTombak:
+        instruments = self.instruments_factory.bench_instruments
+        link: AlphanovLink = instruments[configuration["link"]]
         return AlphanovTombak(link, configuration["address"])
 
-    def configure(self, instrument: Any, configuration: dict) -> Any:
+    def configure(
+        self, instrument: AlphanovTombak, configuration: dict
+    ) -> AlphanovTombak:
         return instrument
 
 
@@ -68,11 +67,11 @@ register_default_loader(
         {
             "power_supply",
         },
-        lambda _, __: object(),
+        lambda _: object(),
         lambda i, _: i,
     )
 )
 
-register_default_loader(AlphanovLoader())
-register_default_loader(AlphanovLaserLoader())
-register_default_loader(AlphanovTombakLoader())
+register_default_loader(AlphanovLoader)
+register_default_loader(AlphanovLaserLoader)
+register_default_loader(AlphanovTombakLoader)

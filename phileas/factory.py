@@ -1,10 +1,11 @@
 import yaml
+import inspect
 import logging
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 
 import graphviz
 
@@ -12,24 +13,37 @@ import graphviz
 class Loader(ABC):
     """
     Class used to initiate a connection to an instrument, and then configure it.
+    In order to add the support for a new instrument, you should subclass it
+    and register it in an `InstrumentsFactory`.
     """
 
-    #: Name of the loader, used in the bench `loader` field
-    name: str
+    #: Name of the loader, which is usually the name of the loaded instrument.
+    #: It is to be matched with the bench configuration `loader` field.
+    name: ClassVar[str]
 
-    #: Functionalities accomplished by the loaded instrument, used to select a
-    #: given bench instrument from the requirements of an experiment. It is
-    #: matched with the `interface` experiment field.
-    interfaces: set[str]
+    #: Interfaces the loaded instrument supports. Interfaces are arbitrary names
+    #: referred to in the experiment configuration file, allowing to choose
+    #: which bench instrument is used for which experiment instrument, depending
+    #: on its `interface` field.
+    interfaces: ClassVar[set[str]]
+
+    #: Reference to the instrument factory which has instantiated the loader.
+    #: This allows loaders to access, among other things, to already
+    #: instantiated instruments.
+    instruments_factory: "InstrumentsFactory"
+
+    def __init__(self, instruments_factory: "InstrumentsFactory"):
+        """
+        When subclassing `Loader`, the signature of the constructor should not
+        be modified, and this constructor should be called.
+        """
+        self.instruments_factory = instruments_factory
 
     @abstractmethod
-    def initiate_connection(
-        self, factory: "InstrumentsFactory", configuration: dict
-    ) -> Any:
+    def initiate_connection(self, configuration: dict) -> Any:
         """
         Initialize a connection to a given instrument, given its bench
-        configuration, and return it. The instruments factory is referred to
-        allow references to other instruments.
+        configuration, and return it.
         """
         raise NotImplementedError()
 
@@ -43,44 +57,52 @@ class Loader(ABC):
         raise NotImplementedError()
 
 
-@dataclass
-class FunctionalLoader(Loader):
+def build_loader(
+    name_: str,
+    interfaces_: set[str],
+    initiate_connection: Callable[[dict], Any],
+    configure: Callable[[Any, dict], Any],
+) -> type[Loader]:
     """
-    Loader class to be used as an alternative to sub-classing `Loader`.
+    Build a loader class from its name, interfaces and different methods. Note
+    that using this function does not allow a loader instance to access the
+    instrument factory that uses it.
     """
 
-    name: str
-    interfaces: set[str]
-    initialization: Callable[["InstrumentsFactory", dict], Any] = field(repr=False)
-    configuration: Callable[[Any, dict], Any] = field(repr=False)
+    class BuiltLoader(Loader):
+        name = name_
+        interfaces = interfaces_
 
-    def initiate_connection(
-        self, factory: "InstrumentsFactory", configuration: dict
-    ) -> Any:
-        return self.initialization(factory, configuration)
+        def initiate_connection(self, configuration: dict) -> Any:
+            return initiate_connection(configuration)
 
-    def configure(self, instrument: Any, configuration: dict) -> Any:
-        return self.configuration(instrument, configuration)
+        def configure(self, instrument: Any, configuration: dict) -> Any:
+            return configure(instrument, configuration)
+
+    return BuiltLoader
 
 
 def __add_loader(
-    loaders: dict[str, Loader],
-    loader: Loader
+    loaders: dict[str, type[Loader]],
+    loader: type[Loader]
     | tuple[
         str,
         set[str],
-        Callable[["InstrumentsFactory", dict], Any],
+        Callable[[dict], Any],
         Callable[[Any, dict], Any],
     ],
 ):
     """
-    Adds a loader to a set of loaders. The loader can be supplied either with
-     - a `Loader` instance
-     - a 4-tuple containing the name, interfaces, initiate_connection and
-     configure fields of a loader
+    Adds a loader to a map of loader classes. The loader can be supplied either
+    with
+     - a `Loader` class
+     - a 4-tuple containing the name, interfaces and different methods of a
+       loader. In this case, it is not possible to reference the instruments
+       factory from the loader, so for complex cases it is advised to use a
+       `Loader` class.
     """
-    if not isinstance(loader, Loader):
-        loader = FunctionalLoader(*loader)
+    if not inspect.isclass(loader):
+        loader = build_loader(*loader)
 
     name = loader.name
     if name in loaders:
@@ -89,22 +111,23 @@ def __add_loader(
     loaders[name] = loader
 
 
-#: Default loaders that every instrument factory has on init. It can be
+#: Default loaders that every instrument factory has on init. It is made to be
 #: modified.
-_DEFAULT_LOADERS: dict[str, Loader] = dict()
+_DEFAULT_LOADERS: dict[str, type[Loader]] = dict()
 
 
 def register_default_loader(
-    loader: Loader
+    loader: type[Loader]
     | tuple[
         str,
         set[str],
-        Callable[["InstrumentsFactory", dict], Any],
+        Callable[[dict], Any],
         Callable[[Any, dict], Any],
     ],
 ):
     """
-    Register a loader to be added on init by every new `InstrumentFactory`
+    Register a loader to be added on init by every new `InstrumentFactory`. See
+    `__add_loader` for the specifications of the arguments.
     """
     __add_loader(_DEFAULT_LOADERS, loader)
 
@@ -119,9 +142,12 @@ class InstrumentsFactory:
     #: Content of the experiment configuration file
     experiment_config: dict = field(init=False, repr=False)
 
-    #: The supported loaders of the factory, stored with their name
-    loaders: dict[str, Loader] = field(init=False, default_factory=dict, repr=False)
-    #: Bench instruments, stored with their name
+    #: The supported loader classes, stored with their name
+    loaders: dict[str, type[Loader]] = field(
+        init=False, default_factory=dict, repr=False
+    )
+
+    #: Instantiated bench instruments, stored with their name
     bench_instruments: dict[str, Any] = field(
         init=False, default_factory=dict, repr=False
     )
@@ -130,7 +156,7 @@ class InstrumentsFactory:
         init=False, default_factory=dict, repr=False
     )
     #: Loaders of the bench instruments
-    bench_instruments_loaders: dict[str, Any] = field(
+    bench_instruments_loaders: dict[str, Loader] = field(
         init=False, default_factory=dict, repr=False
     )
 
@@ -145,14 +171,18 @@ class InstrumentsFactory:
 
     def register_loader(
         self,
-        loader: Loader
+        loader: type[Loader]
         | tuple[
             str,
             set[str],
-            Callable[["InstrumentsFactory", dict], Any],
+            Callable[[dict], Any],
             Callable[[Any, dict], Any],
         ],
     ):
+        """
+        Register a new loader for this factory. See `__add_loader` for the
+        specifications of the arguments.
+        """
         __add_loader(self.loaders, loader)
 
     def initialize_instruments(self):
@@ -164,9 +194,9 @@ class InstrumentsFactory:
 
     def __initialize_bench_instruments(self):
         for name, configuration in self.bench_config.items():
-            loader: Loader
             try:
-                loader = self.loaders[configuration["loader"]]
+                Loader = self.loaders[configuration["loader"]]
+                loader = Loader(self)
             except TypeError:
                 continue
             except KeyError:
@@ -174,9 +204,7 @@ class InstrumentsFactory:
 
             logging.info(f"Initializing {name} with loader {loader.name}")
             self.bench_instruments_loaders[name] = loader
-            self.bench_instruments[name] = loader.initiate_connection(
-                self, configuration
-            )
+            self.bench_instruments[name] = loader.initiate_connection(configuration)
 
     def __configure_experiment_instruments(self):
         for name, config in self.experiment_config.items():
@@ -226,7 +254,7 @@ class InstrumentsFactory:
                 ]
                 raise KeyError(
                     f"More than one suitable bench instrument for '{name}' "
-                    + "experiment instrument: {available_bench_instruments}"
+                    + f"experiment instrument: {available_bench_instruments}"
                 )
             else:
                 bench_name, instrument, loader = available_instruments_loaders[0]
