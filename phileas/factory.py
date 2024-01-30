@@ -186,14 +186,22 @@ class InstrumentsFactory:
                     if required_interface not in loader.interfaces:
                         continue
 
-                    print(f"Supported :{loader}")
+                    logging.debug(
+                        f"Experiment instrument {name} supports bench "
+                        + f"instrument {bench_name} (loader {loader.name})"
+                    )
 
                     if "filter" in config:
                         all_passed = True
                         for field, value in config["filter"].items():
-                            if self.bench_config[bench_name][field] != value:
-                                all_passed = False
-                                break
+                            if self.bench_config[bench_name][field] == value:
+                                continue
+
+                            all_passed = False
+                            msg = f"{bench_name} is discarded for {name} "
+                            msg += f"({field} != {value})"
+                            logging.debug(msg)
+                            break
 
                         if not all_passed:
                             continue
