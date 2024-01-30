@@ -10,7 +10,7 @@ test_name = Path(__file__).stem
 factory = ExperimentFactory(
     test_dir / f"{test_name}_bench.yaml", test_dir / f"{test_name}_experiment.yaml"
 )
-factory.initialize_instruments()
+factory.prepare_experiment()
 
 assert "laser" in factory.experiment_instruments
 assert isinstance(

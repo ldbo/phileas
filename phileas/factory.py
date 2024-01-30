@@ -14,7 +14,7 @@ class Loader(ABC):
     """
     Class used to initiate a connection to an instrument, and then configure it.
     In order to add the support for a new instrument, you should subclass it
-    and register it in an `InstrumentsFactory`.
+    and register it in an `ExperimentFactory`.
     """
 
     #: Name of the loader, which is usually the name of the loaded instrument.
@@ -30,9 +30,9 @@ class Loader(ABC):
     #: Reference to the instrument factory which has instantiated the loader.
     #: This allows loaders to access, among other things, to already
     #: instantiated instruments.
-    instruments_factory: "InstrumentsFactory"
+    instruments_factory: "ExperimentFactory"
 
-    def __init__(self, instruments_factory: "InstrumentsFactory"):
+    def __init__(self, instruments_factory: "ExperimentFactory"):
         """
         When subclassing `Loader`, the signature of the constructor should not
         be modified, and this constructor should be called.
@@ -126,19 +126,25 @@ def register_default_loader(
     ],
 ):
     """
-    Register a loader to be added on init by every new `InstrumentFactory`. See
+    Register a loader to be added on init by every new `ExperimentFactory`. See
     `__add_loader` for the specifications of the arguments.
     """
     __add_loader(_DEFAULT_LOADERS, loader)
 
 
 @dataclass
-class InstrumentsFactory:
+class ExperimentFactory:
+    """
+    Class used to parse configuration files and create the experiment
+    environment they describe.
+    """
+
     bench_file: Path
     experiment_file: Path
 
     #: Content of the bench configuration file
     bench_config: dict = field(init=False, repr=False)
+
     #: Content of the experiment configuration file
     experiment_config: dict = field(init=False, repr=False)
 
@@ -151,10 +157,12 @@ class InstrumentsFactory:
     bench_instruments: dict[str, Any] = field(
         init=False, default_factory=dict, repr=False
     )
-    #: Experiment instruments, stored with their name
+    #: Instantiated and configured experiment instruments, stored with their
+    #: name
     experiment_instruments: dict[str, Any] = field(
         init=False, default_factory=dict, repr=False
     )
+
     #: Loaders of the bench instruments
     bench_instruments_loaders: dict[str, Loader] = field(
         init=False, default_factory=dict, repr=False
@@ -185,7 +193,7 @@ class InstrumentsFactory:
         """
         __add_loader(self.loaders, loader)
 
-    def initialize_instruments(self):
+    def prepare_experiment(self):
         """
         Load and configure the instruments of the bench and experiment files.
         """

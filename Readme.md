@@ -59,9 +59,9 @@
 
 # Python API
 
-## Instruments factory
+## Experiment factory
 
-- The entry point is the `InstrumentsFactory` class, which mainly allows to
+- The entry point is the `ExperimentFactory` class, which mainly allows to
   instantiate bench and experiment instruments using the bench and experiment
   configuration files.
 - It uses some `Loader`s to instantiate and connect to the bench instruments.
