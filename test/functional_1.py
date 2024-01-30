@@ -1,16 +1,14 @@
+from utilities import *
+
 from phileas import *
+import functional_1_config
 
 from pathlib import Path
 
-import functional_1_config
+test_name = Path(__file__).stem
 
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-
-test_dir = (Path.cwd() / Path(__file__)).parent
-factory = InstrumentsFactory(
-    test_dir / "functional_1_bench.yaml", test_dir / "functional_1_experiment.yaml"
+factory = ExperimentFactory(
+    test_dir / f"{test_name}_bench.yaml", test_dir / f"{test_name}_experiment.yaml"
 )
 factory.initialize_instruments()
 
@@ -23,3 +21,4 @@ assert "dut_power_supply" in factory.experiment_instruments
 # The experiment connections graph is rendered in functional_1.pdf
 graph = factory.get_experiment_instruments_graph()
 graph.render(Path(__file__).stem, test_dir, format="pdf", cleanup=True)
+graph.render(test_name, test_dir, format="pdf", cleanup=True)
