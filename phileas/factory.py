@@ -9,6 +9,8 @@ from typing import Any, Callable, ClassVar
 
 import graphviz
 
+import graphviz
+
 
 class Loader(ABC):
     """
