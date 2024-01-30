@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+import graphviz
+
 
 class Loader(ABC):
     """
@@ -229,3 +231,123 @@ class InstrumentsFactory:
             else:
                 bench_name, instrument, loader = available_instruments_loaders[0]
                 self.experiment_instruments[name] = loader.configure(instrument, config)
+
+    def get_experiment_instruments_graph(self) -> graphviz.Digraph:
+        """
+        Extract the instrument connections from the experiment configuration
+        file, building a directed graph representing the interconnections of the
+        instruments.
+        """
+        instruments: set[str] = set()
+        connections: list[tuple[str, str, str | None, str | None]] = []
+
+        # Load individual instruments descriptions
+        instruments.update(self.experiment_config.keys())
+        if "connections" in instruments:
+            instruments.remove("connections")
+
+        for instrument, configuration in self.experiment_config.items():
+            if "connections" not in configuration:
+                continue
+
+            for connection in configuration["connections"]:
+                src = connection.get("from", "")
+                dst = connection.get("to", "")
+
+                src_instrument, src_port = self.__extract_instrument_child_port(
+                    instrument, src, instruments
+                )
+                dst_instrument, dst_port = self.__extract_instrument_child_port(
+                    instrument, dst, instruments
+                )
+
+                connections.append((src_instrument, dst_instrument, src_port, dst_port))
+
+        # Load connections listed in "connections"
+        for connection in self.experiment_config.get("connections", []):
+            src = connection["from"]
+            dst = connection["to"]
+
+            src_instrument, src_port = self.__extract_instrument_child_port(
+                None, src, instruments
+            )
+            dst_instrument, dst_port = self.__extract_instrument_child_port(
+                None, dst, instruments
+            )
+
+            instruments.add(src_instrument)
+            instruments.add(dst_instrument)
+            connections.append((src_instrument, dst_instrument, src_port, dst_port))
+
+        logging.debug(
+            f"Extracted nodes {instruments} for the experiment instruments graph"
+            + f", with {len(connections)} connections"
+        )
+
+        # Extract the list of instruments ports
+        ports: dict[str, dict[str, int]] = dict()
+        for src, dst, src_port, dst_port in connections:
+            for instrument, port in ((src, src_port), (dst, dst_port)):
+                if port is not None:
+                    if instrument not in ports:
+                        ports[instrument] = dict()
+
+                    ports[instrument][port] = len(ports[instrument]) + 1
+
+        return self.__build_graphviz_graph(connections, ports)
+
+    @staticmethod
+    def __build_graphviz_graph(
+        connections: list[tuple[str, str, str | None, str | None]],
+        ports: dict[str, dict[str, int]],
+    ) -> graphviz.Digraph:
+        graph = graphviz.Digraph(
+            "instruments connections", node_attr={"shape": "record"}
+        )
+
+        for instrument, instrument_ports in ports.items():
+            labels: list[tuple[int, str]] = [(0, instrument)]
+            for port, index in instrument_ports.items():
+                labels.append((index, port))
+
+            node_label = " | ".join(f"<f{i}> {l}" for i, l in labels)
+            graph.node(instrument, node_label)
+
+        for src, dst, src_port, dst_port in connections:
+            src_port_index = 0
+            if src_port:
+                src_port_index = ports[src][src_port]
+
+            dst_port_index = 0
+            if dst_port:
+                dst_port_index = ports[dst][dst_port]
+
+            graph.edge(f"{src}:f{src_port_index}", f"{dst}:f{dst_port_index}")
+
+        return graph
+
+    @staticmethod
+    def __extract_instrument_child_port(
+        parent_instrument: str | None, port: str, instruments: set[str]
+    ) -> tuple[str, str | None]:
+        parts = port.split(".")
+
+        if parts == []:
+            if parent_instrument is not None:
+                return parent_instrument, None
+            else:
+                raise KeyError("A connections must have a source and a destination")
+
+        instrument = parts[0]
+        port_parts = parts[1:]
+
+        if instrument not in instruments and parent_instrument is not None:
+            instrument = parent_instrument
+            port_parts = parts
+
+        child_port: str | None = ".".join(port_parts)
+
+        if child_port == "":
+            child_port = None
+
+        return instrument, child_port
