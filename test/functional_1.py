@@ -19,6 +19,5 @@ assert isinstance(
 assert "dut_power_supply" in factory.experiment_instruments
 
 # The experiment connections graph is rendered in functional_1.pdf
-graph = factory.get_experiment_instruments_graph()
-graph.render(Path(__file__).stem, test_dir, format="pdf", cleanup=True)
+graph = factory.get_experiment_graph()
 graph.render(test_name, test_dir, format="pdf", cleanup=True)
