@@ -131,6 +131,14 @@ def register_default_loader(
     Register a loader to be added on init by every new `ExperimentFactory`. See
     `__add_loader` for the specifications of the arguments.
     """
+    try:
+        name = loader.name
+        interfaces = loader.interfaces
+    except AttributeError:
+        name = loader[0]
+        interfaces = loader[1]
+
+    logging.debug(f"Register default loader {name} for interfaces {interfaces}")
     __add_loader(_DEFAULT_LOADERS, loader)
 
 
