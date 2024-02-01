@@ -23,6 +23,10 @@ tombak:
   link: alphanov_link
   address: 3
 
+inquisitor:
+  loader: inquisitor
+  ip: 192.168.41.202
+
 dut:
   device: "/dev/dut_uart"
 

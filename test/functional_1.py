@@ -1,7 +1,7 @@
 from utilities import *
 
 from phileas import *
-import functional_1_config
+import functional_1_config as _
 
 from pathlib import Path
 

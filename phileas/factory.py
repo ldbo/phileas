@@ -204,15 +204,23 @@ class ExperimentFactory:
 
     def __initialize_bench_instruments(self):
         for name, configuration in self.bench_config.items():
-            try:
-                Loader = self.loaders[configuration["loader"]]
-                loader = Loader(self)
-            except TypeError:
-                continue
-            except KeyError:
+            # Instrument configurations are dictionaries with a `loader` field
+            if not isinstance(configuration, dict):
                 continue
 
-            logging.info(f"Initializing {name} with loader {loader.name}")
+            if "loader" not in configuration:
+                continue
+            loader_name = configuration["loader"]
+
+            if loader_name not in self.loaders:
+                msg = f"No '{loader_name}' loader found for bench instrument "
+                msg += f"'{name}'"
+                raise KeyError(msg)
+            Loader = self.loaders[loader_name]
+
+            loader = Loader(self)
+
+            logging.info(f"Initializing connection to {name} with loader {loader.name}")
             self.bench_instruments_loaders[name] = loader
             self.bench_instruments[name] = loader.initiate_connection(configuration)
 
