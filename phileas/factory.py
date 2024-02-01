@@ -203,6 +203,9 @@ class ExperimentFactory:
         self.__configure_experiment_instruments()
 
     def __initialize_bench_instruments(self):
+        logging.info(
+            f"Initializing connections to bench instruments from {self.bench_file}"
+        )
         for name, configuration in self.bench_config.items():
             # Instrument configurations are dictionaries with a `loader` field
             if not isinstance(configuration, dict):
@@ -223,8 +226,10 @@ class ExperimentFactory:
             logging.info(f"Initializing connection to {name} with loader {loader.name}")
             self.bench_instruments_loaders[name] = loader
             self.bench_instruments[name] = loader.initiate_connection(configuration)
+            logging.info(f"{name} connection initialization successful")
 
     def __configure_experiment_instruments(self):
+        logging.info(f"Configuring experiment instruments from {self.experiment_file}")
         for name, config in self.experiment_config.items():
             available_instruments_loaders: list[tuple[str, Any, Loader]] = []
             try:
@@ -276,7 +281,11 @@ class ExperimentFactory:
                 )
             else:
                 bench_name, instrument, loader = available_instruments_loaders[0]
+                logging.info(
+                    f"Configuring {name} -> {bench_name} with loader {loader.name}"
+                )
                 self.experiment_instruments[name] = loader.configure(instrument, config)
+                logging.info(f"{name} configuration successful")
 
     def get_experiment_graph(self) -> graphviz.Digraph:
         """
