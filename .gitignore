@@ -1,2 +1,4 @@
 /dist/
 *.pdf
+__pycache__
+poetry.lock
