@@ -93,6 +93,6 @@
   `exit`. Alternatively, from outside of the development environment, you can
   run commands using `poetry run <command>`. They will be run from inside the
   development environment.
-- Test files are stored in `/test/`, and must be run manually and
-  individually, *e.g.* for the `functional_1` test, run `python
-  test/functional_1.py`.
+- Test files are stored in the `test` module. You can use `unittest` to
+  automatically discover and run them, using for example `python -m unittest`
+  from the root of the repository.

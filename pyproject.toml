@@ -9,6 +9,7 @@ readme = "Readme.md"
 python = "^3.8"
 pyyaml = "^6.0.1"
 graphviz = "^0.20.1"
+pyfakefs = "^5.3.5"
 
 
 [tool.poetry.group.dev.dependencies]
