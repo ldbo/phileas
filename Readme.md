@@ -96,3 +96,5 @@
 - Test files are stored in the `test` module. You can use `unittest` to
   automatically discover and run them, using for example `python -m unittest`
   from the root of the repository.
+- Test `TestFunctional1`, and the associated
+  `functional_1_{config.py,experiment.yaml,bench.yaml}` configuration files are a good example to start using the Phileas.

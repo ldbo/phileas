@@ -1,31 +1,24 @@
 name: "Laser bench"
 
-alphanov_link:
-  loader: alphanov
-  device: "/dev/pdm"
+laser_bus_1:
+  loader: laser_bus
+  device: "/dev/ttyUSB0"
 
 laser_1064:
-  loader: pdm
-  link: alphanov_link
+  loader: laser_source
+  bus: laser_bus_1
   address: 1
   wavelength: 1064
-  power_wait_time: 0.150
 
 laser_980:
-  loader: pdm
-  link: alphanov_link
+  loader: laser_source
+  bus: laser_bus_1
   address: 2
   wavelength: 980
-  power_wait_time: 0.150
-
-tombak:
-  loader: tombak
-  link: alphanov_link
-  address: 3
 
 dut:
   device: "/dev/dut_uart"
 
 main_power_supply:
-  loader: virtual_power_supply
+  loader: precision_power_supply
   ip: "192.168.1.2"

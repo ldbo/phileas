@@ -6,9 +6,9 @@ laser:
 dut_power_supply:
   interface: power_supply
   ch1:
-    voltage: 5.0
+    tension: 5.0
     limit_current: 0.1
-    connected_to: dut.power
+    
   connections:
     - from: ch1
       to: dut.input
