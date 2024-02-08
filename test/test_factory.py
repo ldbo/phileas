@@ -48,6 +48,19 @@ class BaseTestCase(fake_filesystem_unittest.TestCase):
         phileas.factory._DEFAULT_LOADERS = dict()
 
 
+class TestEmptyConfigurationFile(BaseTestCase):
+    bench_config = ""
+    experiment_config = ""
+
+    def test_empty_configuration_file(self):
+        self.assertEqual(self.factory.bench_config, dict())
+        self.assertEqual(self.factory.experiment_config, dict())
+
+        self.factory.prepare_experiment()
+        self.assertEqual(self.factory.bench_instruments, dict())
+        self.assertEqual(self.factory.experiment_instruments, dict())
+
+
 class TestExperimentFactory(BaseTestCase):
     bench_config = """
 bench_instrument:
@@ -78,7 +91,6 @@ experiment_instrument:
 
 class TestMissingBenchInstrument(BaseTestCase):
     bench_config = """
-name: Empty bench config
     """
 
     experiment_config = """
