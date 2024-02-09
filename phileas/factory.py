@@ -1,6 +1,6 @@
-import yaml
 import inspect
 import logging
+import yaml
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -56,6 +56,30 @@ class Loader(ABC):
         """
         raise NotImplementedError()
 
+    @classmethod
+    def get_markdown_documentation(cls) -> str:
+        doc = f"# {cls.__name__}\n"
+        doc += f" - Name: `{cls.name}`\n"
+
+        if len(cls.interfaces) > 0:
+            doc += f" - Interfaces:\n"
+            doc += "".join([f"   - `{i}`\n" for i in sorted(list(cls.interfaces))])
+        else:
+            doc += f" - This loader is for bench-only instruments\n"
+
+        if cls.__doc__ is not None:
+            doc += f"\n{inspect.cleandoc(cls.__doc__)}\n"
+
+        if cls.initiate_connection.__doc__ is not None:
+            initiate_doc = inspect.cleandoc(cls.initiate_connection.__doc__)
+            doc += f"\n## Initialization\n{initiate_doc}\n"
+
+        if len(cls.interfaces) > 0 and cls.configure.__doc__ is not None:
+            configure_doc = inspect.cleandoc(cls.configure.__doc__)
+            doc += f"\n## Configuration\n{configure_doc}\n"
+
+        return doc
+
 
 def build_loader(
     name_: str,
@@ -78,6 +102,14 @@ def build_loader(
 
         def configure(self, instrument: Any, configuration: dict) -> Any:
             return configure(instrument, configuration)
+
+    name = "".join(w.capitalize() for w in name_.lower().split("_"))
+    if not name.endswith("Loader"):
+        name += "Loader"
+
+    BuiltLoader.__name__ = name
+    BuiltLoader.initiate_connection.__doc__ = initiate_connection.__doc__
+    BuiltLoader.configure.__doc__ = configure.__doc__
 
     return BuiltLoader
 
@@ -213,6 +245,25 @@ class ExperimentFactory:
         specifications of the arguments.
         """
         _add_loader(self.loaders, loader)
+
+    def get_loaders_markdown_documentation(self) -> str:
+        """
+        Return the Markdown documentation of all the registered loaders of this
+        factory, represented by the concatenation of their documentations.
+        """
+        return "\n\n".join(
+            loader.get_markdown_documentation() for loader in self.loaders.values()
+        )
+
+    @staticmethod
+    def get_default_loaders_markdown_documentation() -> str:
+        """
+        Return the Markdown documentation of all the default registered loaders,
+        represented by the concatenation of their documentations.
+        """
+        return "\n\n".join(
+            loader.get_markdown_documentation() for loader in _DEFAULT_LOADERS.values()
+        )
 
     def prepare_experiment(self):
         """

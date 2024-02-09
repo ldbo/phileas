@@ -10,7 +10,7 @@ class LaserBus:
 
 class LaserBusLoader(Loader):
     """
-    # Bench only instrument loader example
+    Bench only instrument loader example
 
     It does not support any interface, as it is a bench-only instrument, used
     for the initialization of other bench instruments. Thus, you need only
@@ -43,7 +43,7 @@ class LaserSource:
 
 class LaserSourceLoader(Loader):
     """
-    # Usual instrument loader example
+    Usual instrument loader example
 
     To implement it, define its name and supported interfaces, as well as
     `initiate_connection` and `configure`.

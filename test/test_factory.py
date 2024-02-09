@@ -137,6 +137,137 @@ experiment_instrument:
             self.factory.prepare_experiment()
 
 
+class TestLoaderDocumentation(BaseTestCase):
+    bench_config = ""
+    experiment_config = ""
+    loader: type[phileas.factory.Loader]
+
+    def setUp(self) -> None:
+        class ClassLoader(phileas.factory.Loader):
+            name = "class_loader"
+            interfaces = {"interface1", "interface2"}
+
+            def initiate_connection(self, configuration: dict) -> NoneType:
+                """
+                Initialization documentation.
+
+                Parameters:
+                 - param1: param1 description
+                 - param2: param2 description
+                """
+                return None
+
+            def configure(self, instrument: NoneType, configuration: dict) -> NoneType:
+                """
+                Configuration documentation.
+
+                Parameters:
+                 - param1: param1 description
+                 - param2: param2 description
+                """
+                return instrument
+
+        self.class_loader = ClassLoader
+
+        def initiate(configuration: dict) -> None:
+            """Initiate documentation"""
+            return None
+
+        def configure(instrument: None, configuration: dict) -> None:
+            """Configure documentation"""
+            return instrument
+
+        self.func_loader = phileas.factory.build_loader(
+            "func_loader", {"interface"}, initiate, configure
+        )
+
+        super().setUp()
+        self.factory.register_loader(self.class_loader)
+        self.factory.register_loader(self.func_loader)
+        register_default_loader(self.class_loader)
+        register_default_loader(self.func_loader)
+
+    def test_class_loader_markdown_documentation_generation(self):
+        expected_doc = (
+            "# ClassLoader\n"
+            " - Name: `class_loader`\n"
+            " - Interfaces:\n"
+            "   - `interface1`\n"
+            "   - `interface2`\n"
+            "\n"
+            "## Initialization\n"
+            "Initialization documentation.\n"
+            "\n"
+            "Parameters:\n"
+            " - param1: param1 description\n"
+            " - param2: param2 description\n"
+            "\n"
+            "## Configuration\n"
+            "Configuration documentation.\n"
+            "\n"
+            "Parameters:\n"
+            " - param1: param1 description\n"
+            " - param2: param2 description\n"
+        )
+        self.assertEqual(self.class_loader.get_markdown_documentation(), expected_doc)
+
+    def test_func_loader_markdown_documentation_generation(self):
+        expected_doc = (
+            "# FuncLoader\n"
+            " - Name: `func_loader`\n"
+            " - Interfaces:\n"
+            "   - `interface`\n"
+            "\n"
+            "## Initialization\n"
+            "Initiate documentation\n"
+            "\n"
+            "## Configuration\n"
+            "Configure documentation\n"
+        )
+        self.assertEqual(self.func_loader.get_markdown_documentation(), expected_doc)
+
+    def test_factory_markdown_documentation_generation(self):
+        expected_doc = (
+            "# ClassLoader\n"
+            " - Name: `class_loader`\n"
+            " - Interfaces:\n"
+            "   - `interface1`\n"
+            "   - `interface2`\n"
+            "\n"
+            "## Initialization\n"
+            "Initialization documentation.\n"
+            "\n"
+            "Parameters:\n"
+            " - param1: param1 description\n"
+            " - param2: param2 description\n"
+            "\n"
+            "## Configuration\n"
+            "Configuration documentation.\n"
+            "\n"
+            "Parameters:\n"
+            " - param1: param1 description\n"
+            " - param2: param2 description\n"
+            "\n"
+            "\n"
+            "# FuncLoader\n"
+            " - Name: `func_loader`\n"
+            " - Interfaces:\n"
+            "   - `interface`\n"
+            "\n"
+            "## Initialization\n"
+            "Initiate documentation\n"
+            "\n"
+            "## Configuration\n"
+            "Configure documentation\n"
+        )
+        self.assertEqual(
+            self.factory.get_loaders_markdown_documentation(), expected_doc
+        )
+        self.assertEqual(
+            ExperimentFactory.get_default_loaders_markdown_documentation(), expected_doc
+        )
+
+
 class TestFunctional1(unittest.TestCase):
     test_dir: Path
 
