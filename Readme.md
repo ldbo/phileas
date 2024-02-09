@@ -83,6 +83,21 @@
   to specify which interface the bench instrument it is linked to should
   `implement`.
 
+# Typical project structure
+
+A project allowing to run an experiment will typically contain the following
+files:
+ - `experiment.yaml`: experiment configuration file, which is written by the
+   experimenter, and is (*ideally*) bench-agnostic.
+ - `bench.yaml`: bench configuration file, which is written by the person
+   configuring the bench.
+ - `project_config.py`: defines a set of loaders, and use
+   `register_default_loader` to make them available for the experiment
+   factories to be created. It can be shared between different benches. In
+   order to help writing configuration files compatible with a set of
+   registered loaders, you can use `python -m phileas.cli
+   list-loaders`.
+
 # Developer notes
 
 - The repository depends on [Poetry](https://python-poetry.org/) for

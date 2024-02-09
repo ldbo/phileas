@@ -10,11 +10,15 @@ python = "^3.8"
 pyyaml = "^6.0.1"
 graphviz = "^0.20.1"
 pyfakefs = "^5.3.5"
+rich = "^13.7.0"
 
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^7"
 ipdb = "^0.13.13"
+
+[tool.poetry.scripts]
+phileas = 'phileas.cli:main'
 
 [build-system]
 requires = ["poetry-core"]
