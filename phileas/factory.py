@@ -82,7 +82,7 @@ def build_loader(
     return BuiltLoader
 
 
-def __add_loader(
+def _add_loader(
     loaders: dict[str, type[Loader]],
     loader: type[Loader]
     | tuple[
@@ -112,7 +112,7 @@ def __add_loader(
 
 
 #: Default loaders that every instrument factory has on init. It is made to be
-#: modified.
+#: modified by `register_default_loader` and `clear_default_loaders` only.
 _DEFAULT_LOADERS: dict[str, type[Loader]] = dict()
 
 
@@ -127,7 +127,7 @@ def register_default_loader(
 ):
     """
     Register a loader to be added on init by every new `ExperimentFactory`. See
-    `__add_loader` for the specifications of the arguments.
+    `_add_loader` for the specifications of the arguments.
     """
     if inspect.isclass(loader):
         name = loader.name
@@ -137,7 +137,14 @@ def register_default_loader(
         interfaces = loader[1]
 
     logging.debug(f"Register default loader {name} for interfaces {interfaces}")
-    __add_loader(_DEFAULT_LOADERS, loader)
+    _add_loader(_DEFAULT_LOADERS, loader)
+
+
+def clear_default_loaders():
+    """
+    Clear the default loaders database.
+    """
+    _DEFAULT_LOADERS.clear()
 
 
 @dataclass
@@ -202,10 +209,10 @@ class ExperimentFactory:
         ],
     ):
         """
-        Register a new loader for this factory. See `__add_loader` for the
+        Register a new loader for this factory. See `_add_loader` for the
         specifications of the arguments.
         """
-        __add_loader(self.loaders, loader)
+        _add_loader(self.loaders, loader)
 
     def prepare_experiment(self):
         """

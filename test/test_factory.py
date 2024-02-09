@@ -1,12 +1,12 @@
 import unittest
 from pathlib import Path
+from types import NoneType
 from typing import ClassVar
 
 from pyfakefs import fake_filesystem_unittest
 
 import phileas
-from phileas import ExperimentFactory
-from phileas.factory import register_default_loader
+from phileas import ExperimentFactory, register_default_loader, clear_default_loaders
 
 
 class BaseTestCase(fake_filesystem_unittest.TestCase):
@@ -45,7 +45,7 @@ class BaseTestCase(fake_filesystem_unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        phileas.factory._DEFAULT_LOADERS = dict()
+        clear_default_loaders()
 
 
 class TestEmptyConfigurationFile(BaseTestCase):
@@ -174,7 +174,7 @@ class TestFunctional1(unittest.TestCase):
         self.assertTrue(self.graph_file.exists())
 
     def tearDown(self) -> None:
-        phileas.factory._DEFAULT_LOADERS = dict()
+        clear_default_loaders()
 
         try:
             if self.graph_file.exists():
