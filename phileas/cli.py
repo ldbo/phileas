@@ -9,6 +9,7 @@ import rich.markdown
 import phileas
 
 _CONSOLE = rich.console.Console()
+_ERROR_CONSOLE = rich.console.Console(stderr=True, style="bold red")
 
 
 def list_loaders(script: pathlib.Path) -> int:
@@ -16,12 +17,12 @@ def list_loaders(script: pathlib.Path) -> int:
         "inspected_module", script
     )
     if inspected_module_spec is None:
-        _CONSOLE.print("Cannot open the script")
+        _ERROR_CONSOLE.print("Cannot open the script")
         return 1
 
     loader = inspected_module_spec.loader
     if loader is None:
-        _CONSOLE.print("Cannot import the script")
+        _ERROR_CONSOLE.print("Cannot import the script")
         return 1
 
     inspected_module = importlib.util.module_from_spec(inspected_module_spec)
