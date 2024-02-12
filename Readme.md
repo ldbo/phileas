@@ -96,7 +96,7 @@ files:
    factories to be created. It can be shared between different benches. In
    order to help writing configuration files compatible with a set of
    registered loaders, you can use `python -m phileas.cli
-   list-loaders`.
+   list-loaders`, whose output can be redirected to a file if needed.
 
 # Developer notes
 

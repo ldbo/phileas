@@ -28,8 +28,11 @@ def list_loaders(script: pathlib.Path) -> int:
     loader.exec_module(inspected_module)
 
     doc = phileas.ExperimentFactory.get_default_loaders_markdown_documentation()
-    doc_md = rich.markdown.Markdown(doc)
-    _CONSOLE.print(doc_md)
+    if _CONSOLE.is_terminal:
+        doc_md = rich.markdown.Markdown(doc)
+        _CONSOLE.print(doc_md)
+    else:
+        _CONSOLE.print(doc)
 
     return 0
 
