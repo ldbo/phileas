@@ -18,7 +18,7 @@ ipython = "^7"
 ipdb = "^0.13.13"
 
 [tool.poetry.scripts]
-phileas = 'phileas.cli:main'
+phileas = 'phileas.__main__:main'
 
 [build-system]
 requires = ["poetry-core"]

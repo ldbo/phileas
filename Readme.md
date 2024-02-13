@@ -95,8 +95,9 @@ files:
    `register_default_loader` to make them available for the experiment
    factories to be created. It can be shared between different benches. In
    order to help writing configuration files compatible with a set of
-   registered loaders, you can use `python -m phileas.cli
-   list-loaders`, whose output can be redirected to a file if needed.
+   registered loaders, you can use `python -m phileas list-loaders`, whose
+   Markdown output can be redirected to a file if needed, with `python -m
+   phileas list-loaders > loaders_doc.md`.
 
 # Developer notes
 
