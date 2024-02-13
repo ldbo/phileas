@@ -109,6 +109,9 @@ files:
   `exit`. Alternatively, from outside of the development environment, you can
   run commands using `poetry run <command>`. They will be run from inside the
   development environment.
+- Adding dependencies can be done using `poetry add`. Before committing the
+  changes that have been made to `pyproject.toml`, you should rebuild the lock
+  file, using `poetry lock`. Then, `poetry.lock` should be committed as well.
 - Test files are stored in the `test` module. You can use `unittest` to
   automatically discover and run them, using for example `python -m unittest`
   from the root of the repository.
