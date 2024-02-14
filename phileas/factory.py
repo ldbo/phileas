@@ -9,6 +9,8 @@ from typing import Any, Callable, ClassVar
 
 import graphviz
 
+from . import parsing
+
 
 class Loader(ABC):
     """
@@ -215,19 +217,12 @@ class ExperimentFactory:
         init=False, default_factory=dict, repr=False
     )
 
-    @staticmethod
-    def __load_yaml_dict_from_file(file_path: Path) -> dict:
-        with open(file_path, "r") as f:
-            data = yaml.safe_load(f)
 
-        if not isinstance(data, dict):
-            data = dict()
 
-        return data
 
     def __post_init__(self):
-        self.bench_config = self.__load_yaml_dict_from_file(self.bench_file)
-        self.experiment_config = self.__load_yaml_dict_from_file(self.experiment_file)
+        self.bench_config = parsing.load_yaml_dict_from_file(self.bench_file)
+        self.experiment_config = parsing.load_yaml_dict_from_file(self.experiment_file)
         self.loaders.update(_DEFAULT_LOADERS)
 
     def register_loader(
