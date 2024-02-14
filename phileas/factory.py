@@ -1,6 +1,5 @@
 import inspect
 import logging
-import yaml
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -217,12 +216,12 @@ class ExperimentFactory:
         init=False, default_factory=dict, repr=False
     )
 
-
-
-
     def __post_init__(self):
         self.bench_config = parsing.load_yaml_dict_from_file(self.bench_file)
-        self.experiment_config = parsing.load_yaml_dict_from_file(self.experiment_file)
+        exp = parsing.load_yaml_dict_from_file(self.experiment_file)
+        exp = parsing.convert_numeric_ranges(exp)
+        self.experiment_config = exp
+
         self.loaders.update(_DEFAULT_LOADERS)
 
     def register_loader(
@@ -351,6 +350,7 @@ class ExperimentFactory:
                 )
                 self.experiment_instruments[name] = loader.configure(instrument, config)
                 logging.info(f"{name} configuration successful")
+
 
     def get_experiment_graph(self) -> graphviz.Digraph:
         """

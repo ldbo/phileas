@@ -1,5 +1,11 @@
 laser:
   interface: laser
+
+  power:
+    from: 1
+    to: 2
+    steps: 10
+    
   filter:
     wavelength: 1064
 

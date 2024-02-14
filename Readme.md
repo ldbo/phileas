@@ -57,6 +57,24 @@
    `instrument`, relative naming can be used. Thus, `instrument.port` can be
    replaced by `port`.
 
+### Numeric ranges
+
+ - An experiment file can contain numeric ranges, which are represented by
+   maps with the following structure
+
+ ```yaml
+from: <first_element>
+to: <last_element>
+steps|resolution: ...
+[progression: linear|geometric]
+ ```
+
+ - Upon parsing the experiment file, the factory replaces numeric ranges in
+   `ExperimentFactory.experiment_config` with the sequence they represent,
+   allowing to iterate through them.
+ - For more information about how numeric ranges are built, see
+   `phileas.parsing.convert_numeric_ranges`.
+
 # Python API
 
 ## Experiment factory

@@ -297,6 +297,8 @@ class TestFunctional1(unittest.TestCase):
         self.assertNotIn("dut", factory.experiment_instruments)
         self.assertNotIn("ampli", factory.experiment_instruments)
 
+        self.assertEqual(factory.experiment_config["laser"]["power"].shape[0], 10)
+
         graph = factory.get_experiment_graph()
         graph.render(
             filename="functional_1", directory=self.test_dir, format="pdf", cleanup=True
