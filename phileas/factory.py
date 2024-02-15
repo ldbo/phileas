@@ -303,6 +303,7 @@ class Connection:
     src_port: list[str]
     dst: str
     dst_port: list[str]
+    attr: str
 
 
 class ExperimentFactory:
@@ -438,9 +439,9 @@ class ExperimentFactory:
         Extract the connection graph from the experiment configuration, removing
         `connections` entries from it.
         """
-        connections: list[
-            tuple[str, list[str], str, list[str], str]
-        ] = self.__parse_global_connections()
+        connections: list[tuple[str, list[str], str, list[str], str]] = (
+            self.__parse_global_connections()
+        )
 
         for name, config in self.experiment_config.items():
             connections += self.__parse_instrument_connections(
@@ -455,6 +456,7 @@ class ExperimentFactory:
                     src_port,
                     dst,
                     dst_port,
+                    attr,
                 )
             )
 
@@ -465,6 +467,7 @@ class ExperimentFactory:
         for connection in self.experiment_config.pop("connections", []):
             source_str: str = connection["from"]
             destination_str: str = connection["to"]
+            attributes: str = connection.get("attributes", "")
 
             source_elements = source_str.split(".")
             source_instrument = source_elements[0]
@@ -480,6 +483,7 @@ class ExperimentFactory:
                     source_port,
                     destination_instrument,
                     destination_port,
+                    attributes,
                 )
             )
 
@@ -492,6 +496,7 @@ class ExperimentFactory:
         for connection in config:
             source_str: str = connection.pop("from", name)
             destination_str: str = connection.pop("to", name)
+            attributes: str = connection.get("attributes", "")
 
             source_elements = source_str.split(".")
             if source_elements[0] in self.experiment_config:
@@ -515,6 +520,7 @@ class ExperimentFactory:
                     source_port,
                     destination_instrument,
                     destination_port,
+                    attributes,
                 )
             )
 
