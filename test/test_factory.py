@@ -1,6 +1,6 @@
+import contextlib
 import unittest
 from pathlib import Path
-from types import NoneType
 from typing import ClassVar
 
 from pyfakefs import fake_filesystem_unittest
@@ -53,12 +53,12 @@ class TestEmptyConfigurationFile(BaseTestCase):
     experiment_config = ""
 
     def test_empty_configuration_file(self):
-        self.assertEqual(self.factory.bench_config, dict())
-        self.assertEqual(self.factory.experiment_config, dict())
+        self.assertEqual(self.factory.bench_config, {})
+        self.assertEqual(self.factory.experiment_config, {})
 
-        self.factory.prepare_experiment()
-        self.assertEqual(self.factory.bench_instruments, dict())
-        self.assertEqual(self.factory.experiment_instruments, dict())
+        self.assertDictEqual(self.factory.experiment_instruments, {})
+        self.factory.initiate_connections()
+        self.assertDictEqual(self.factory.experiment_instruments, {})
 
 
 class TestExperimentFactory(BaseTestCase):
@@ -84,8 +84,8 @@ experiment_instrument:
         super().setUp()
 
     def test_experiment_preparation(self):
-        self.factory.prepare_experiment()
-        self.assertIn("bench_instrument", self.factory.bench_instruments)
+        self.factory.initiate_connections()
+        _ = self.factory.get_bench_instrument("bench_instrument")
         self.assertIn("experiment_instrument", self.factory.experiment_instruments)
 
 
@@ -98,18 +98,19 @@ experiment_instrument:
   interface: instrument_interface
     """
 
+    def setUp(self) -> None:
+        pass
+
     def test_missing_bench_instrument(self):
-        msg = f"Cannot find a suitable bench instrument for "
-        msg += "'experiment_instrument' experiment instrument"
-        with self.assertRaises(KeyError, msg=msg):
-            self.factory.prepare_experiment()
+        with self.assertRaises(KeyError):
+            super().setUp()
 
 
 class TestTooManyBenchInstrument(BaseTestCase):
     bench_config = """
 bench_instrument1:
   loader: instrument_loader
-  
+
 bench_instrument2:
   loader: instrument_loader
     """
@@ -128,13 +129,10 @@ experiment_instrument:
                 lambda i, _: None,
             )
         )
-        super().setUp()
 
     def test_too_many_bench_instruments(self):
-        msg = f"More than one suitable bench instrument for 'experiment_instrument' "
-        msg += f"experiment instrument: [bench_instrument1, bench_instrument2]"
-        with self.assertRaises(KeyError, msg=msg):
-            self.factory.prepare_experiment()
+        with self.assertRaises(KeyError):
+            super().setUp()
 
 
 class TestLoaderDocumentation(BaseTestCase):
@@ -147,7 +145,7 @@ class TestLoaderDocumentation(BaseTestCase):
             name = "class_loader"
             interfaces = {"interface1", "interface2"}
 
-            def initiate_connection(self, configuration: dict) -> NoneType:
+            def initiate_connection(self, configuration: dict) -> object:
                 """
                 Initialization documentation.
 
@@ -155,9 +153,9 @@ class TestLoaderDocumentation(BaseTestCase):
                  - param1: param1 description
                  - param2: param2 description
                 """
-                return None
+                return object()
 
-            def configure(self, instrument: NoneType, configuration: dict) -> NoneType:
+            def configure(self, instrument: object, configuration: dict):
                 """
                 Configuration documentation.
 
@@ -165,7 +163,7 @@ class TestLoaderDocumentation(BaseTestCase):
                  - param1: param1 description
                  - param2: param2 description
                 """
-                return instrument
+                pass
 
         self.class_loader = ClassLoader
 
@@ -282,26 +280,37 @@ class TestFunctional1(unittest.TestCase):
             self.test_dir / "functional_1_bench.yaml",
             self.test_dir / "functional_1_experiment.yaml",
         )
-        factory.prepare_experiment()
+        _ = factory.get_bench_instrument("laser_1064")
+        factory.initiate_connections()
 
+        # Bench-level
         self.assertEqual(
-            factory.bench_instruments["laser_bus_1"].device, "/dev/ttyUSB0"
+            factory.get_bench_instrument("laser_bus_1").device, "/dev/ttyUSB0"
         )
-        self.assertIn("laser_1064", factory.bench_instruments)
-        self.assertIn("laser_980", factory.bench_instruments)
-        self.assertIn("main_power_supply", factory.bench_instruments)
-        self.assertNotIn("dut", factory.bench_instruments)
+        _ = factory.get_bench_instrument("laser_980")
+        _ = factory.get_bench_instrument("main_power_supply")
+        with self.assertRaises(KeyError):
+            _ = factory.get_bench_instrument("dut")
 
+        # Experiment-level
         self.assertEqual(factory.experiment_instruments["laser"].wavelength, 1064)
         self.assertIn("dut_power_supply", factory.experiment_instruments)
-        self.assertNotIn("dut", factory.experiment_instruments)
+        with self.assertRaises(KeyError):
+            _ = factory.get_bench_instrument("dut_power_supply")
         self.assertNotIn("ampli", factory.experiment_instruments)
 
+        # Configuration access
         self.assertEqual(factory.experiment_config["laser"]["power"].shape[0], 10)
+        self.assertIn("ampli", factory.experiment_config)
+        self.assertNotIn("connections", factory.experiment_config)
 
+        # Graph generation
         graph = factory.get_experiment_graph()
         graph.render(
-            filename="functional_1", directory=self.test_dir, format="pdf", cleanup=True
+            filename="functional_1",
+            directory=self.test_dir,
+            format="pdf",
+            cleanup=True,
         )
         self.graph_file = self.test_dir / "functional_1.pdf"
         self.assertTrue(self.graph_file.exists())
@@ -309,8 +318,6 @@ class TestFunctional1(unittest.TestCase):
     def tearDown(self) -> None:
         clear_default_loaders()
 
-        try:
+        with contextlib.suppress(AttributeError):
             if self.graph_file.exists():
                 self.graph_file.unlink()
-        except AttributeError:
-            pass

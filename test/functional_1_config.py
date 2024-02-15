@@ -27,11 +27,11 @@ class LaserBusLoader(Loader):
         """
         return LaserBus(configuration["device"])
 
-    def configure(self, instrument: LaserBus, configuration: dict) -> LaserBus:
+    def configure(self, instrument: LaserBus, configuration: dict):
         """
         Being a bench-only instrument, it must not be configured.
         """
-        return instrument
+        pass
 
 
 @dataclass
@@ -66,17 +66,18 @@ class LaserSourceLoader(Loader):
          - address: address of the laser on the bus
          - wavelength (nm): specified central wavelength of the laser source
         """
-        instruments = self.instruments_factory.bench_instruments
-        link: LaserBus = instruments[configuration["bus"]]
+        link: LaserBus = self.instruments_factory.get_bench_instrument(
+            configuration["bus"]
+        )
         wavelength = configuration["wavelength"]
         return LaserSource(link, configuration["address"], wavelength)
 
-    def configure(self, instrument: LaserSource, configuration: dict) -> LaserSource:
+    def configure(self, instrument: LaserSource, configuration: dict):
         """
         Called after having linked a bench instrument to an experiment
         instrument, effectively configuring the instrument.
         """
-        return instrument
+        pass
 
 
 @dataclass
@@ -84,7 +85,7 @@ class PrecisionPowerSupply:
     channels: dict = field(default_factory=dict)
 
     def configure_channel(self, channel: str, configuration: dict):
-        config = dict()
+        config = {}
         config["tension"] = configuration["tension"]
         config["limit_current"] = configuration["limit_current"]
         self.channels[channel] = config
@@ -92,7 +93,7 @@ class PrecisionPowerSupply:
 
 def configure_precision_power_supply(
     power_supply: PrecisionPowerSupply, configuration: dict
-) -> PrecisionPowerSupply:
+):
     """
     Parameters: dict with channel name keys - strings starting with `ch` - and
     dict values, with the following required keys:
@@ -102,8 +103,6 @@ def configure_precision_power_supply(
     for key, parameter_value in configuration.items():
         if key.startswith("ch"):
             power_supply.configure_channel(key, parameter_value)
-
-    return power_supply
 
 
 # You now have to register the implemented loaders
