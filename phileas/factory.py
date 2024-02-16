@@ -312,8 +312,8 @@ class ExperimentFactory:
     environment they describe, making the instruments available.
     """
 
-    bench_file: Path
-    experiment_file: Path
+    bench_file: Path | str
+    experiment_file: Path | str
 
     #: Parsed content of the bench configuration file, which is stripped of the
     #: reserved keyword entries
@@ -336,7 +336,7 @@ class ExperimentFactory:
     #: Experiment connections, created by __build_connection_graph
     __connections: list[Connection]
 
-    def __init__(self, bench_file: Path, experiment_file: Path):
+    def __init__(self, bench_file: Path | str, experiment_file: Path | str):
         """
         Create an experiment factory, parsing the configuration files, so that
         the instruments just need to initiate their connection to be used.
