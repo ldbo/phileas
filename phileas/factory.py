@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import reduce
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, Generator
 
 import graphviz
 
@@ -385,7 +385,7 @@ class ExperimentFactory:
 
         return be.instrument
 
-    def configure(self, name: str, configuration: dict):
+    def configure_instrument(self, name: str, configuration: dict):
         """
         Configure an experiment instrument using the given configuration, and
         the `configure` method of its loader.
@@ -394,6 +394,62 @@ class ExperimentFactory:
         instrument = experiment_instrument.bench_instrument.instrument
         loader = experiment_instrument.bench_instrument.loader
         loader.configure(instrument, configuration)
+
+    def configure_experiment(self, configuration: dict):
+        """
+        Configure all the instruments of an experiment using the `configure`
+        method of their respective loaders and the entry of configuration
+        matching their name.
+        """
+        for name in self.__experiment_instruments:
+            self.configure_instrument(name, configuration[name])
+
+    def experiment_configurations_iterator(
+        self,
+    ) -> Generator[dict[str, Any], None, None]:
+        """
+        Creates a generator yielding the successive literal configurations
+        represented by the experiment configuration file. See
+        `parsing.configurations_iterator` for more details.
+        """
+        return parsing.configurations_iterator(self.experiment_config)
+
+    def instrument_configurations_iterator(
+        self, instrument: str
+    ) -> Generator[dict[str, Any], None, None]:
+        """
+        Creates a generator yielding the successive literal configurations
+        represented by an instrument entry of the experiment configuration
+        file. See `parsing.configurations_iterator` for more details.
+        """
+        return parsing.configurations_iterator(self.experiment_config[instrument])
+
+    def configured_experiment_iterator(self) -> Generator[dict[str, Any], None, None]:
+        """
+        Creates a generator which configures the experiment according to the
+        successive literal configurations represented by the experiment
+        configuration file, and yields the dictionary of the configured
+        instruments at each step.
+
+        See `parsing.configurations_iterator` for more details.
+        """
+        for config in self.experiment_configurations_iterator():
+            self.configure_experiment(config)
+            yield self.experiment_instruments
+
+    def configured_instrument_iterator(
+        self, instrument: str, lazy: bool = False
+    ) -> Generator[Any, None, None]:
+        """
+        Creates a generator which configures an instrument according to the
+        successive literal configurations represented by the experiment
+        configuration file, and yields configured instrument at each step.
+
+        See `parsing.configurations_iterator` for more details.
+        """
+        for config in self.instrument_configurations_iterator(instrument):
+            self.configure_instrument(instrument, config)
+            yield self.experiment_instruments[instrument]
 
     def __preinit_bench_instruments(self):
         """

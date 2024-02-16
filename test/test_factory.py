@@ -283,6 +283,8 @@ class TestFunctional1(unittest.TestCase):
         _ = factory.get_bench_instrument("laser_1064")
         factory.initiate_connections()
 
+        self.assertEqual(len(list(factory.configured_experiment_iterator())), 30)
+
         # Bench-level
         self.assertEqual(
             factory.get_bench_instrument("laser_bus_1").device, "/dev/ttyUSB0"

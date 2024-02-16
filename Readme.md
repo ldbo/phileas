@@ -59,7 +59,7 @@
  - Each connection can have an `attribute` field, which is a string that is
    not used yet.
 
-### Numeric ranges
+### Iteration through multiple configurations
 
  - An experiment file can contain numeric ranges, which are represented by
    maps with the following structure
@@ -76,6 +76,12 @@ steps|resolution: ...
    allowing to iterate through them.
  - For more information about how numeric ranges are built, see
    `phileas.parsing.convert_numeric_ranges`.
+ - When using numeric ranges, the configuration file can be thought of as a
+   representation of multiple so-called *literal configurations*, where each
+   entry having a numeric range value is replaced by one of the values that the
+   range contains. Iterating through those configurations is possible using the
+   `[experiment|instrument]_configurations_iterator` and `configured_
+   [experiment|instrument]_iterator` methods.
 
 # Python API
 

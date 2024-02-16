@@ -49,3 +49,34 @@ class TestParsing(TestCase):
         )
         self.assertIsInstance(r["a"], np.ndarray)
         self.assertIsInstance(r["b"][0], np.ndarray)
+
+    def test_iteration_simple_dict(self):
+        config = {"a": np.linspace(0, 1, 11)}
+        configs = list(parsing.configurations_iterator(config))
+        self.assertEqual(len(configs), 11)
+        self.assertAlmostEqual(configs[0]["a"], 0)
+        self.assertAlmostEqual(configs[1]["a"], 0.1)
+        self.assertAlmostEqual(configs[10]["a"], 1)
+
+    def test_iteration_nested_dict(self):
+        config = {"a": {"b": np.linspace(0, 1, 11)}}
+        configs = list(parsing.configurations_iterator(config))
+        self.assertEqual(len(configs), 11)
+        self.assertAlmostEqual(configs[0]["a"]["b"], 0)
+        self.assertAlmostEqual(configs[1]["a"]["b"], 0.1)
+        self.assertAlmostEqual(configs[10]["a"]["b"], 1)
+
+    def test_iteration_nested_list(self):
+        config = {"a": [np.linspace(0, 1, 11)]}
+        configs = list(parsing.configurations_iterator(config))
+        self.assertEqual(len(configs), 11)
+        self.assertAlmostEqual(configs[0]["a"][0], 0)
+        self.assertAlmostEqual(configs[1]["a"][0], 0.1)
+        self.assertAlmostEqual(configs[10]["a"][0], 1)
+
+    def test_iteration_product(self):
+        config = {"a": np.linspace(0, 1, 3), "b": [np.linspace(0, 1, 3)]}
+        configs = list(parsing.configurations_iterator(config))
+        self.assertEqual(len(configs), 9)
+        self.assertAlmostEqual(configs[5]["a"], 0.5)
+        self.assertAlmostEqual(configs[5]["b"][0], 1)
