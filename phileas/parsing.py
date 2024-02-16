@@ -4,9 +4,8 @@ from math import ceil
 from pathlib import Path
 from typing import Any, Generator, Iterable
 
-from ruamel.yaml import YAML
-
 import numpy as np
+from ruamel.yaml import YAML
 
 
 def load_yaml_dict_from_file(file: Path | str) -> dict:

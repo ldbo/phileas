@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import phileas
-from phileas import ExperimentFactory, register_default_loader, clear_default_loaders
+from phileas import ExperimentFactory, clear_default_loaders, register_default_loader
 
 
 class BaseTestCase(unittest.TestCase):
@@ -259,7 +259,7 @@ class TestFunctional1(unittest.TestCase):
             self.test_dir / "functional_1_bench.yaml",
             self.test_dir / "functional_1_experiment.yaml",
         )
-        _ = factory.get_bench_instrument("laser_1064")
+        _ = factory.get_bench_instrument("laser_1064")  # noqa: F811
         factory.initiate_connections()
 
         self.assertEqual(len(list(factory.configured_experiment_iterator())), 30)

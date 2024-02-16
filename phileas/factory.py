@@ -1,15 +1,14 @@
 import inspect
 import logging
 import operator
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import reduce
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Generator
+from typing import Any, Callable, ClassVar, Generator, cast
 
-import graphviz
+import graphviz  # type: ignore[import-untyped]
 
 from . import parsing
 
@@ -126,7 +125,7 @@ def _add_loader(
             str,
             set[str],
             Callable[[dict], Any],
-            Callable[[Any, dict], Any],
+            Callable[[Any, dict], None],
         ]
     ),
 ):
@@ -139,7 +138,15 @@ def _add_loader(
        factory from the loader, so for complex cases it is advised to use a
        `Loader` class.
     """
-    if not inspect.isclass(loader):
+    if not inspect.isclass(loader):  # type: ignore[misc]
+        # Here, loader is guaranteed to be a tuple, as it is not a class object,
+        # but this is not understood by mypy. Using isinstance(loader, tuple)
+        # could lead to issues if the user were to define a loader inheriting
+        # from tuple.
+        loader = cast(
+            tuple[str, set[str], Callable[[dict], Any], Callable[[Any, dict], None]],
+            loader,
+        )
         loader = build_loader(*loader)
 
     name = loader.name
@@ -161,7 +168,7 @@ def register_default_loader(
             str,
             set[str],
             Callable[[dict], Any],
-            Callable[[Any, dict], Any],
+            Callable[[Any, dict], None],
         ]
     ),
 ):
@@ -173,6 +180,10 @@ def register_default_loader(
         name = loader.name
         interfaces = loader.interfaces
     else:
+        loader = cast(
+            tuple[str, set[str], Callable[[dict], Any], Callable[[Any, dict], Any]],
+            loader,
+        )
         name = loader[0]
         interfaces = loader[1]
 

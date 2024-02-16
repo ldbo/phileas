@@ -16,8 +16,8 @@ class TestParsing(TestCase):
         self.assertEqual(parsing.load_yaml_dict_from_file(""), {})
 
     def test_non_map_top_level(self):
+        file_content = "- item1\n- item2\n"
         with self.assertRaises(ValueError):
-            file_content = "- item1\n- item2\n"
             parsing.load_yaml_dict_from_file(file_content)
 
     def test_numeric_range_linear_steps(self):
