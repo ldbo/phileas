@@ -56,6 +56,32 @@
  - Additionally, when specifying connections directly inside an instrument
    `instrument`, relative naming can be used. Thus, `instrument.port` can be
    replaced by `port`.
+ - Each connection can have an `attribute` field, which is a string that is
+   not used yet.
+
+### Iteration through multiple configurations
+
+ - An experiment file can contain numeric ranges, which are represented by
+   maps with the following structure
+
+ ```yaml
+from: <first_element>
+to: <last_element>
+steps|resolution: ...
+[progression: linear|geometric]
+ ```
+
+ - Upon parsing the experiment file, the factory replaces numeric ranges in
+   `ExperimentFactory.experiment_config` with the sequence they represent,
+   allowing to iterate through them.
+ - For more information about how numeric ranges are built, see
+   `phileas.parsing.convert_numeric_ranges`.
+ - When using numeric ranges, the configuration file can be thought of as a
+   representation of multiple so-called *literal configurations*, where each
+   entry having a numeric range value is replaced by one of the values that the
+   range contains. Iterating through those configurations is possible using the
+   `[experiment|instrument]_configurations_iterator` and `configured_
+   [experiment|instrument]_iterator` methods.
 
 # Python API
 
@@ -83,6 +109,22 @@
   to specify which interface the bench instrument it is linked to should
   `implement`.
 
+# Typical project structure
+
+A project allowing to run an experiment will typically contain the following
+files:
+ - `experiment.yaml`: experiment configuration file, which is written by the
+   experimenter, and is (*ideally*) bench-agnostic.
+ - `bench.yaml`: bench configuration file, which is written by the person
+   configuring the bench.
+ - `project_config.py`: defines a set of loaders, and use
+   `register_default_loader` to make them available for the experiment
+   factories to be created. It can be shared between different benches. In
+   order to help writing configuration files compatible with a set of
+   registered loaders, you can use `python -m phileas list-loaders`, whose
+   Markdown output can be redirected to a file if needed, with `python -m
+   phileas list-loaders > loaders_doc.md`.
+
 # Developer notes
 
 - The repository depends on [Poetry](https://python-poetry.org/) for
@@ -93,6 +135,15 @@
   `exit`. Alternatively, from outside of the development environment, you can
   run commands using `poetry run <command>`. They will be run from inside the
   development environment.
-- Test files are stored in `/test/`, and must be run manually and
-  individually, *e.g.* for the `functional_1` test, run `python
-  test/functional_1.py`.
+- Adding dependencies can be done using `poetry add`. Before committing the
+  changes that have been made to `pyproject.toml`, you should rebuild the lock
+  file, using `poetry lock`. Then, `poetry.lock` should be committed as well.
+- Test files are stored in the `test` module. You can use `unittest` to
+  automatically discover and run them, using for example `python -m unittest`
+  from the root of the repository.
+- Test `TestFunctional1`, and the associated `functional_1_
+  {config.py,experiment.yaml,bench.yaml}` configuration files are a good
+  example to start using the Phileas.
+- Pre-commit hooks are managed by [pre-commmit]
+  (https://pre-commit.com/), which is a developer dependency. To use them, call
+  `pre-commit install` from the project virtual environment.
