@@ -361,7 +361,6 @@ class ExperimentFactory:
 
         self.experiment_file = experiment_file
         exp = parsing.load_yaml_dict_from_file(experiment_file)
-        exp = parsing.convert_numeric_ranges(exp)
         self.experiment_config = exp
         self.experiment_instruments = {}
         self.__preconfigure_experiment_instruments()

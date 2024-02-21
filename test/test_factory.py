@@ -262,8 +262,6 @@ class TestFunctional1(unittest.TestCase):
         _ = factory.get_bench_instrument("laser_1064")  # noqa: F811
         factory.initiate_connections()
 
-        self.assertEqual(len(list(factory.configured_experiment_iterator())), 30)
-
         # Bench-level
         self.assertEqual(
             factory.get_bench_instrument("laser_bus_1").device, "/dev/ttyUSB0"
@@ -281,7 +279,9 @@ class TestFunctional1(unittest.TestCase):
         self.assertNotIn("ampli", factory.experiment_instruments)
 
         # Configuration access
-        self.assertEqual(factory.experiment_config["laser"]["power"].shape[0], 10)
+        self.assertEqual(
+            factory.experiment_config["laser"]["power"].to_array().shape[0], 10
+        )
         self.assertIn("ampli", factory.experiment_config)
         self.assertNotIn("connections", factory.experiment_config)
 

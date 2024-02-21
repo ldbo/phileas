@@ -65,17 +65,16 @@
    maps with the following structure
 
  ```yaml
-from: <first_element>
-to: <last_element>
+!range
+start: <first_element>
+end: <last_element>
 steps|resolution: ...
 [progression: linear|geometric]
  ```
 
  - Upon parsing the experiment file, the factory replaces numeric ranges in
-   `ExperimentFactory.experiment_config` with the sequence they represent,
-   allowing to iterate through them.
- - For more information about how numeric ranges are built, see
-   `phileas.parsing.convert_numeric_ranges`.
+   `ExperimentFactory.experiment_config` with a `parsing.NumericRange` object,
+   which is an iterable and can be converted to a numpy array with `to_array`.
  - When using numeric ranges, the configuration file can be thought of as a
    representation of multiple so-called *literal configurations*, where each
    entry having a numeric range value is replaced by one of the values that the
