@@ -361,7 +361,6 @@ class ExperimentFactory:
 
         self.experiment_file = experiment_file
         exp = parsing.load_yaml_dict_from_file(experiment_file)
-        exp = parsing.convert_numeric_ranges(exp)
         self.experiment_config = exp
         self.experiment_instruments = {}
         self.__preconfigure_experiment_instruments()
@@ -396,71 +395,97 @@ class ExperimentFactory:
 
         return be.instrument
 
-    def configure_instrument(self, name: str, configuration: dict):
+    def configure_instrument(self, name: str, configuration: dict | None = None):
         """
         Configure an experiment instrument using the given configuration, and
-        the `configure` method of its loader.
+        the `configure` method of its loader. If no configuration is given,
+        use the instrument default literal configuration from the experiment configuration.
+
+        Note that the default configuration uses None values for iterables
+        without a default value.
         """
+        if configuration is None:
+            configuration = parsing.default_configuration(
+                self.experiment_config["name"]
+            )
+
         experiment_instrument = self.__experiment_instruments[name]
         instrument = experiment_instrument.bench_instrument.instrument
         loader = experiment_instrument.bench_instrument.loader
         loader.configure(instrument, configuration)
 
-    def configure_experiment(self, configuration: dict):
+    def configure_experiment(self, configuration: dict | None = None):
         """
         Configure all the instruments of an experiment using the `configure`
         method of their respective loaders and the entry of configuration
-        matching their name.
+        matching their name. If no configuration is given, use the experiment
+        default literal configuration from the experiment configuration.
+
+        Note that the default configuration uses None values for iterables
+        without a default value.
         """
+        if configuration is None:
+            configuration = parsing.default_configuration(self.experiment_config)
+
         for name in self.__experiment_instruments:
             self.configure_instrument(name, configuration[name])
 
     def experiment_configurations_iterator(
-        self,
+        self, method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT
     ) -> Generator[dict[str, Any], None, None]:
         """
         Creates a generator yielding the successive literal configurations
         represented by the experiment configuration file. See
         `parsing.configurations_iterator` for more details.
         """
-        return parsing.configurations_iterator(self.experiment_config)
+        return parsing.configurations_iterator(self.experiment_config, method=method)
 
     def instrument_configurations_iterator(
-        self, instrument: str
+        self,
+        instrument: str,
+        method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT,
     ) -> Generator[dict[str, Any], None, None]:
         """
         Creates a generator yielding the successive literal configurations
         represented by an instrument entry of the experiment configuration
         file. See `parsing.configurations_iterator` for more details.
         """
-        return parsing.configurations_iterator(self.experiment_config[instrument])
+        return parsing.configurations_iterator(
+            self.experiment_config[instrument], method=method
+        )
 
-    def configured_experiment_iterator(self) -> Generator[dict[str, Any], None, None]:
+    def configured_experiment_iterator(
+        self, method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT
+    ) -> Generator[dict[str, Any], None, None]:
         """
         Creates a generator which configures the experiment according to the
         successive literal configurations represented by the experiment
-        configuration file, and yields the dictionary of the configured
-        instruments at each step.
+        configuration file, and yields the dictionary of the configurations at
+        each step.
 
         See `parsing.configurations_iterator` for more details.
         """
-        for config in self.experiment_configurations_iterator():
+        for config in self.experiment_configurations_iterator(method=method):
             self.configure_experiment(config)
-            yield self.experiment_instruments
+            yield config
 
     def configured_instrument_iterator(
-        self, instrument: str, lazy: bool = False
+        self,
+        instrument: str,
+        method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT,
     ) -> Generator[Any, None, None]:
         """
         Creates a generator which configures an instrument according to the
         successive literal configurations represented by the experiment
-        configuration file, and yields configured instrument at each step.
+        configuration file, and yields the configuration at each step.
 
         See `parsing.configurations_iterator` for more details.
         """
-        for config in self.instrument_configurations_iterator(instrument):
+        for config in self.instrument_configurations_iterator(
+            instrument, method=method
+        ):
             self.configure_instrument(instrument, config)
-            yield self.experiment_instruments[instrument]
+            yield config
 
     def __preinit_bench_instruments(self):
         """

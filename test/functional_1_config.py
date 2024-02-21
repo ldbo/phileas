@@ -31,7 +31,7 @@ class LaserBusLoader(Loader):
         """
         Being a bench-only instrument, it must not be configured.
         """
-        pass
+        raise NotImplementedError()
 
 
 @dataclass

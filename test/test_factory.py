@@ -4,7 +4,12 @@ from pathlib import Path
 from typing import ClassVar
 
 import phileas
-from phileas import ExperimentFactory, clear_default_loaders, register_default_loader
+from phileas import (
+    ExperimentFactory,
+    clear_default_loaders,
+    parsing,
+    register_default_loader,
+)
 
 
 class BaseTestCase(unittest.TestCase):
@@ -262,8 +267,6 @@ class TestFunctional1(unittest.TestCase):
         _ = factory.get_bench_instrument("laser_1064")  # noqa: F811
         factory.initiate_connections()
 
-        self.assertEqual(len(list(factory.configured_experiment_iterator())), 30)
-
         # Bench-level
         self.assertEqual(
             factory.get_bench_instrument("laser_bus_1").device, "/dev/ttyUSB0"
@@ -281,9 +284,24 @@ class TestFunctional1(unittest.TestCase):
         self.assertNotIn("ampli", factory.experiment_instruments)
 
         # Configuration access
-        self.assertEqual(factory.experiment_config["laser"]["power"].shape[0], 10)
+        self.assertEqual(
+            factory.experiment_config["laser"]["power"].to_array().shape[0], 10
+        )
         self.assertIn("ampli", factory.experiment_config)
         self.assertNotIn("connections", factory.experiment_config)
+
+        # Configuration generation and iteration
+        factory.configure_experiment()
+        for exp_configuration in factory.configured_experiment_iterator():
+            self.assertIn("laser", exp_configuration)
+            self.assertIn("dut_power_supply", exp_configuration)
+            self.assertIn("dut", exp_configuration)
+            self.assertIn("ampli", exp_configuration)
+
+        for instrument_configuration in factory.configured_instrument_iterator(
+            "laser", method=parsing.IterationMethod.UNION
+        ):
+            self.assertIn("power", instrument_configuration)
 
         # Graph generation
         graph = factory.get_experiment_graph()

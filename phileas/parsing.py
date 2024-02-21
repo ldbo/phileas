@@ -1,16 +1,21 @@
+from abc import ABC, abstractmethod
 from copy import deepcopy
+from dataclasses import dataclass
+from enum import Enum
 from itertools import product
 from math import ceil
 from pathlib import Path
-from typing import Any, Generator, Iterable
+from typing import Any, ClassVar, Generator, Iterable, Iterator, Literal
 
 import numpy as np
+from ruamel import yaml
 from ruamel.yaml import YAML
+
+_yaml = YAML(typ="safe")
 
 
 def load_yaml_dict_from_file(file: Path | str) -> dict:
-    yaml = YAML(typ="safe")
-    data = yaml.load(file)
+    data = _yaml.load(file)
 
     if data is None:
         data = {}
@@ -21,125 +26,210 @@ def load_yaml_dict_from_file(file: Path | str) -> dict:
     return data
 
 
-def convert_numeric_ranges(range_dict: dict[str, Any] | Any) -> Any:
+class ConfigurationIterable(ABC):
+    """Representation of an iterable object to be used in a configuration file."""
+
+    #: Default value of the iterable, used when it is not being iterated.
+    default: Any | None
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[Any]:
+        raise NotImplementedError()
+
+
+@_yaml.register_class
+@dataclass
+class NumericRange(ConfigurationIterable):
+    yaml_tag: ClassVar[str] = "!range"
+    start: float | int
+    end: float | int
+    steps: int | None = None
+    resolution: float | int | None = None
+    progression: Literal["linear"] | Literal["geometric"] = "linear"
+    default: float | int | None = None
+
+    def __post_init__(self):
+        steps_none = self.steps is None
+        resolution_none = self.resolution is None
+        if steps_none == resolution_none:
+            msg = "!range object should define one of steps and resolution parameters."
+            raise ValueError(msg)
+
+        if self.steps is not None and self.steps <= 0:
+            raise ValueError("!range object should have a positive number of steps")
+
+        if self.resolution is not None:
+            if self.progression == "linear" and self.resolution <= 0:
+                raise ValueError("The resolution of a linear !range must be >0")
+            elif self.progression == "geometric" and self.resolution <= 1:
+                raise ValueError("The resolution of a geometric !range must be >1")
+
+    def to_array(self) -> np.ndarray:
+        if self.progression == "linear":
+            if self.steps is not None:
+                steps = self.steps
+            else:  # Then use resolution
+                resolution = self.resolution
+                assert resolution is not None
+                steps = ceil(abs(self.end - self.start) / resolution) + 1
+
+            return np.linspace(self.start, self.end, num=steps)
+        else:  # progression == "geometric"
+            if self.steps is not None:
+                steps = self.steps
+            else:  # Then use resolution
+                resolution = self.resolution
+                assert resolution is not None
+                global_ratio = self.end / self.start
+                if global_ratio < 1:
+                    global_ratio = 1 / global_ratio
+
+                steps = ceil(np.log(global_ratio) / np.log(resolution)) + 1
+
+            return np.geomspace(self.start, self.end, num=steps)
+
+    def __iter__(self) -> Iterator[float]:
+        return iter(self.to_array())
+
+
+@_yaml.register_class
+@dataclass
+class Sequence(ConfigurationIterable):
+    yaml_tag: ClassVar[str] = "!sequence"
+    elements: list[Any]
+    default: Any | None = None
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: "Sequence"):
+        if node.default is None:
+            return representer.represent_sequence(cls.yaml_tag, node.elements)
+
+        return representer.represent_mapping(
+            cls.yaml_tag, {"elements": node.elements, "default": node.default}
+        )
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
+        if isinstance(node, yaml.SequenceNode):
+            elements = constructor.construct_sequence(node, deep=True)
+            default = None
+        elif isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            elements = mapping["elements"]
+            if not isinstance(elements, list):
+                raise TypeError("!sequence elements field must be a sequence")
+
+            default = mapping.get("default", None)
+        else:
+            msg = "!sequence must be a scalar sequence of a mapping with keys "
+            msg += "elements [and default]"
+            raise TypeError(msg)
+
+        return Sequence(elements=elements, default=default)
+
+    def to_array(self) -> list[Any]:
+        return self.elements
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.elements)
+
+
+class IterationMethod(Enum):
     """
-    Recursively convert numeric ranges in a dictionary to an equivalent numpy array.
-
-    A numeric range is represented by a dictionary which has the following
-    keys: `from`, `to`, `steps`|`resolution`, [`progression`].
-
-     - `to` and `from` represent the starting and ending element of the
-       represented sequence, and are included in it. Note that they do not
-       require to be ordered.
-     - `progression` is either `linear` (default) or `geometric`, and controls
-       whether the sequence is arithmetic or geometric.
-     - `steps` represents the number of elements in the sequence
-     - `resolution` is the difference (resp. ratio) between two successive
-       elements in an arithmetic (resp. geometric) sequence. It must be
-       greater than 0 (resp. 1). As the starting and ending elements of the
-       sequence are included, if the resolution is not compatible with them,
-       it is rounded down to the first compatible resolution. Thus, the
-       actual resolution is guaranteed to be lower or equal to `resolution`
-
-    If `range_dict` is a dictionary which stores numeric ranges, it *will
-    be modified*.
+    Represent a way of iterating through a tuple of ConfigurationIterable
+    objects (I1, ..., In).
     """
-    if isinstance(range_dict, list):
-        for i in range(len(range_dict)):
-            range_dict[i] = convert_numeric_ranges(range_dict[i])
-        return range_dict
 
-    if not isinstance(range_dict, dict):
-        return range_dict
+    #: Cartesian product of the iterables, in lexicographic order
+    PRODUCT = "product"
 
-    keys = set(range_dict.keys())
-
-    required_keys = {"to", "from"}
-    one_of_those_keys = {"steps", "resolution"}
-    optional_keys = {"progression"}
-    allowed_keys = required_keys | one_of_those_keys | optional_keys
-
-    if not keys.issubset(allowed_keys) or not required_keys.issubset(keys):
-        excluded_keys = {"connections", "interface"}
-        for key in range_dict:
-            if key in excluded_keys:
-                continue
-
-            range_dict[key] = convert_numeric_ranges(range_dict[key])
-
-        return range_dict
-
-    if len(one_of_those_keys & keys) != 1:
-        raise ValueError(f"Exactly one of {one_of_those_keys} must be supplied")
-
-    return _convert_actual_range_to_sequence(range_dict)
+    #: Only one iterable is iterated at a time, starting from the first one. The
+    #: iterables must have a usable default value, which is used when they are
+    #: not being iterated.
+    UNION = "union"
 
 
-def _convert_actual_range_to_sequence(range_dict: dict[str, Any]) -> np.ndarray:
-    progression = range_dict.get("progression", "linear")
-    start = range_dict["from"]
-    end = range_dict["to"]
-
-    if progression == "linear":
-        if "steps" in range_dict:
-            steps = range_dict["steps"]
-        else:  # Then use resolution
-            resolution = range_dict["resolution"]
-            if resolution <= 0:
-                raise ValueError("The resolution of a linear range must be >0")
-
-            steps = ceil(abs(end - start) / resolution) + 1
-
-        return np.linspace(start, end, num=steps)
-    else:  # progression == "geometric"
-        if "steps" in range_dict:
-            steps = range_dict["steps"]
-        else:  # "resolution" in r
-            resolution = range_dict["resolution"]
-            if resolution <= 1:
-                raise ValueError("The resolution of a geometric range must be >1")
-
-            global_ratio = end / start
-            if global_ratio < 1:
-                global_ratio = 1 / global_ratio
-
-            steps = ceil(np.log(global_ratio) / np.log(resolution)) + 1
-
-        return np.geomspace(start, end, num=steps)
-
-
-def configurations_iterator(config: dict) -> Generator[dict, None, None]:
+def configurations_iterator(
+    config: dict, method: IterationMethod = IterationMethod.PRODUCT
+) -> Generator[dict, None, None]:
     """
-    Yields the product of the configurations represented by a collection with
-    numeric ranges. You can use it to iterate through configurations that don't
-    have numeric ranges anymore, but have literal values instead.
+    Yields the different literal configurations represented by a configuration
+    which contains (or does not, actually we don't care) iterables.
 
-    A numeric range is defined as a numpy.ndarray object.
+    See also IterationMethod.
 
     >>> config = {
-    ...     "a": np.linspace(1, 2, 2),
-    ...     "b": [np.linspace(0, 1, 2)],
+    ...     "a": Sequence([1, 12], default=1),
+    ...     "b": NumericRange(0, 1, 2, default=4),
     ...     "c": 3,
     ... }
     >>> for c in configurations_iterator(config):
     ...     print(c)
-    {'a': 1.0, 'b': [0.0], 'c': 3}
-    {'a': 1.0, 'b': [1.0], 'c': 3}
-    {'a': 2.0, 'b': [0.0], 'c': 3}
-    {'a': 2.0, 'b': [1.0], 'c': 3}
+    {'a': 1, 'b': 0.0, 'c': 3}
+    {'a': 1, 'b': 1.0, 'c': 3}
+    {'a': 12, 'b': 0.0, 'c': 3}
+    {'a': 12, 'b': 1.0, 'c': 3}
+    >>> for c in configurations_iterator(config, method=IterationMethod.UNION):
+    ...     print(c)
+    {'a': 1, 'b': 4, 'c': 3}
+    {'a': 12, 'b': 4, 'c': 3}
+    {'a': 1, 'b': 0.0, 'c': 3}
+    {'a': 1, 'b': 1.0, 'c': 3}
+
     """
-    range_locations: list[list[str]] = _find_numeric_range_locations(config)
-    ranges = [_get_nested_element(config, loc) for loc in range_locations]
-
-    for values in product(*ranges):
-        single_config = deepcopy(config)
-        for location, value in zip(range_locations, values):
-            _set_nested_element(single_config, location, value)
-
-        yield single_config
+    if method == IterationMethod.PRODUCT:
+        return _configurations_iterator_product(config)
+    elif method == IterationMethod.UNION:
+        return _configurations_iterator_union(config)
 
 
-def _find_numeric_range_locations(
+def _configurations_iterator_product(config: dict) -> Generator[dict, None, None]:
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+    iterables: list[ConfigurationIterable] = [
+        _get_nested_element(config, loc) for loc in iterables_locations
+    ]
+
+    for values in product(*iterables):
+        literal_config = deepcopy(config)
+        for location, value in zip(iterables_locations, values):
+            _set_nested_element(literal_config, location, value)
+
+        yield literal_config
+
+
+def _configurations_iterator_union(config: dict) -> Generator[dict, None, None]:
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+    iterables: list[ConfigurationIterable] = [
+        _get_nested_element(config, loc) for loc in iterables_locations
+    ]
+
+    default_config = default_configuration(config)
+
+    for iterable_location, iterable in zip(iterables_locations, iterables):
+        for value in iterable:
+            literal_config = deepcopy(default_config)
+            _set_nested_element(literal_config, iterable_location, value)
+
+            yield literal_config
+
+
+def default_configuration(config: dict) -> dict:
+    """
+    Converts a configuration to a literal configuration, by using the default
+    value its iterable entries. The iterable default value, if not specified,
+    is None.
+    """
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+
+    default_config = deepcopy(config)
+    for location in iterables_locations:
+        default_value = _get_nested_element(config, location).default
+        _set_nested_element(default_config, location, default_value)
+
+    return default_config
+
+
+def _find_iterables_locations(
     collection: dict | list | Any,
     current_location: list | None = None,
 ) -> list[list]:
@@ -167,10 +257,10 @@ def _find_numeric_range_locations(
 
     for key, value in next_level_iterator:
         new_loc = current_location.copy() + [key]
-        if isinstance(value, np.ndarray):
+        if isinstance(value, ConfigurationIterable):
             locations.append(new_loc)
         else:
-            locations += _find_numeric_range_locations(value, new_loc)
+            locations += _find_iterables_locations(value, new_loc)
 
     return locations
 
