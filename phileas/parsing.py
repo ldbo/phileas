@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
+from enum import Enum
 from itertools import product
 from math import ceil
 from pathlib import Path
@@ -27,6 +28,9 @@ def load_yaml_dict_from_file(file: Path | str) -> dict:
 
 class ConfigurationIterable(ABC):
     """Representation of an iterable object to be used in a configuration file."""
+
+    #: Default value of the iterable, used when it is not being iterated.
+    default: Any | None
 
     @abstractmethod
     def __iter__(self) -> Iterator[Any]:
@@ -130,35 +134,99 @@ class Sequence(ConfigurationIterable):
         return iter(self.elements)
 
 
-def configurations_iterator(config: dict) -> Generator[dict, None, None]:
+class IterationMethod(Enum):
     """
-    Yields the product of the configurations represented by a collection with
-    numeric ranges. You can use it to iterate through configurations that don't
-    have numeric ranges anymore, but have literal values instead.
+    Represent a way of iterating through a tuple of ConfigurationIterable
+    objects (I1, ..., In).
+    """
 
-    A numeric range is defined as a numpy.ndarray object.
+    #: Cartesian product of the iterables, in lexicographic order
+    PRODUCT = "product"
+
+    #: Only one iterable is iterated at a time, starting from the first one. The
+    #: iterables must have a usable default value, which is used when they are
+    #: not being iterated.
+    UNION = "union"
+
+
+def configurations_iterator(
+    config: dict, method: IterationMethod = IterationMethod.PRODUCT
+) -> Generator[dict, None, None]:
+    """
+    Yields the different literal configurations represented by a configuration
+    which contains (or does not, actually we don't care) iterables.
+
+    See also IterationMethod.
 
     >>> config = {
-    ...     "a": np.linspace(1, 2, 2),
-    ...     "b": [np.linspace(0, 1, 2)],
+    ...     "a": Sequence([1, 12], default=1),
+    ...     "b": NumericRange(0, 1, 2, default=4),
     ...     "c": 3,
     ... }
     >>> for c in configurations_iterator(config):
     ...     print(c)
-    {'a': 1.0, 'b': [0.0], 'c': 3}
-    {'a': 1.0, 'b': [1.0], 'c': 3}
-    {'a': 2.0, 'b': [0.0], 'c': 3}
-    {'a': 2.0, 'b': [1.0], 'c': 3}
+    {'a': 1, 'b': 0.0, 'c': 3}
+    {'a': 1, 'b': 1.0, 'c': 3}
+    {'a': 12, 'b': 0.0, 'c': 3}
+    {'a': 12, 'b': 1.0, 'c': 3}
+    >>> for c in configurations_iterator(config, method=IterationMethod.UNION):
+    ...     print(c)
+    {'a': 1, 'b': 4, 'c': 3}
+    {'a': 12, 'b': 4, 'c': 3}
+    {'a': 1, 'b': 0.0, 'c': 3}
+    {'a': 1, 'b': 1.0, 'c': 3}
+
     """
-    range_locations: list[list[str]] = _find_iterables_locations(config)
-    ranges = [_get_nested_element(config, loc) for loc in range_locations]
+    if method == IterationMethod.PRODUCT:
+        return _configurations_iterator_product(config)
+    elif method == IterationMethod.UNION:
+        return _configurations_iterator_union(config)
 
-    for values in product(*ranges):
-        single_config = deepcopy(config)
-        for location, value in zip(range_locations, values):
-            _set_nested_element(single_config, location, value)
 
-        yield single_config
+def _configurations_iterator_product(config: dict) -> Generator[dict, None, None]:
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+    iterables: list[ConfigurationIterable] = [
+        _get_nested_element(config, loc) for loc in iterables_locations
+    ]
+
+    for values in product(*iterables):
+        literal_config = deepcopy(config)
+        for location, value in zip(iterables_locations, values):
+            _set_nested_element(literal_config, location, value)
+
+        yield literal_config
+
+
+def _configurations_iterator_union(config: dict) -> Generator[dict, None, None]:
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+    iterables: list[ConfigurationIterable] = [
+        _get_nested_element(config, loc) for loc in iterables_locations
+    ]
+
+    default_config = default_configuration(config)
+
+    for iterable_location, iterable in zip(iterables_locations, iterables):
+        for value in iterable:
+            literal_config = deepcopy(default_config)
+            _set_nested_element(literal_config, iterable_location, value)
+
+            yield literal_config
+
+
+def default_configuration(config: dict) -> dict:
+    """
+    Converts a configuration to a literal configuration, by using the default
+    value its iterable entries. The iterable default value, if not specified,
+    is None.
+    """
+    iterables_locations: list[list[str]] = _find_iterables_locations(config)
+
+    default_config = deepcopy(config)
+    for location in iterables_locations:
+        default_value = _get_nested_element(config, location).default
+        _set_nested_element(default_config, location, default_value)
+
+    return default_config
 
 
 def _find_iterables_locations(

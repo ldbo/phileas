@@ -115,3 +115,28 @@ b: !sequence
         self.assertEqual(len(configs), 9)
         self.assertAlmostEqual(configs[5]["a"], 0.5)
         self.assertAlmostEqual(configs[5]["b"][0], 1)
+
+    def test_iteration_union(self):
+        config = {
+            "a": parsing.Sequence(elements=[1, 12, 13], default=0),
+            "b": parsing.Sequence(elements=[2, 3], default=4),
+        }
+        configs = list(
+            parsing.configurations_iterator(
+                config, method=parsing.IterationMethod.UNION
+            )
+        )
+        self.assertEqual(len(configs), 5)
+        self.assertEqual(configs[0], {"a": 1, "b": 4})
+        self.assertEqual(configs[1], {"a": 12, "b": 4})
+        self.assertEqual(configs[2], {"a": 13, "b": 4})
+        self.assertEqual(configs[3], {"a": 0, "b": 2})
+        self.assertEqual(configs[4], {"a": 0, "b": 3})
+
+    def test_configuration_default(self):
+        config = {
+            "a": parsing.Sequence(elements=[1, 12, 13], default=1),
+            "b": parsing.NumericRange(start=0, end=1, steps=2, default=4),
+        }
+        default_config = parsing.default_configuration(config)
+        self.assertEqual(default_config, {"a": 1, "b": 4})

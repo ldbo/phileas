@@ -4,7 +4,12 @@ from pathlib import Path
 from typing import ClassVar
 
 import phileas
-from phileas import ExperimentFactory, clear_default_loaders, register_default_loader
+from phileas import (
+    ExperimentFactory,
+    clear_default_loaders,
+    parsing,
+    register_default_loader,
+)
 
 
 class BaseTestCase(unittest.TestCase):
@@ -284,6 +289,19 @@ class TestFunctional1(unittest.TestCase):
         )
         self.assertIn("ampli", factory.experiment_config)
         self.assertNotIn("connections", factory.experiment_config)
+
+        # Configuration generation and iteration
+        factory.configure_experiment()
+        for exp_configuration in factory.configured_experiment_iterator():
+            self.assertIn("laser", exp_configuration)
+            self.assertIn("dut_power_supply", exp_configuration)
+            self.assertIn("dut", exp_configuration)
+            self.assertIn("ampli", exp_configuration)
+
+        for instrument_configuration in factory.configured_instrument_iterator(
+            "laser", method=parsing.IterationMethod.UNION
+        ):
+            self.assertIn("power", instrument_configuration)
 
         # Graph generation
         graph = factory.get_experiment_graph()

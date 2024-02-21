@@ -5,6 +5,7 @@ laser:
     start: 1
     end: 2
     steps: 10
+    default: 0
 
   filter:
     wavelength: 1064
@@ -16,10 +17,9 @@ dut_power_supply:
     limit_current: 0.1
 
   ch2:
-    tension: !range
-      start: 0.0
-      end: 3.3
-      steps: 3
+    tension: !sequence
+      elements: [1, 2, 3, 3.3]
+      default: 3.3
     limit_current: 0.2
 
   connections:
