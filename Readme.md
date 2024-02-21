@@ -61,26 +61,40 @@
 
 ### Iteration through multiple configurations
 
- - An experiment file can contain numeric ranges, which are represented by
-   maps with the following structure
+ - Custom iterable YAML datatypes are implemented, which allow a single
+   configuration file to represent multiple concrete configurations:
+   - `!range` is parsed to a `parsing.NumericRange`, and represents a continuous
+     range of numbers;
+   - `!sequence` is parsed to a `parsing.Sequence`, and represents a sequence of
+     values.
+ - A typical use case is the following:
 
  ```yaml
-!range
-start: <first_element>
-end: <last_element>
-steps|resolution: ...
-[progression: linear|geometric]
+position: !range
+  start: 0.5
+  end: 1.2
+  resolution: 0.01
+time: !sequence [0.15, 0.20, 0.45]
+power: !sequence
+  elements: [1, 2, 5]
+  default: 1
  ```
 
- - Upon parsing the experiment file, the factory replaces numeric ranges in
-   `ExperimentFactory.experiment_config` with a `parsing.NumericRange` object,
-   which is an iterable and can be converted to a numpy array with `to_array`.
- - When using numeric ranges, the configuration file can be thought of as a
-   representation of multiple so-called *literal configurations*, where each
-   entry having a numeric range value is replaced by one of the values that the
-   range contains. Iterating through those configurations is possible using the
-   `[experiment|instrument]_configurations_iterator` and `configured_
+ - See the `parsing` module for documentation about how the iterable objects
+   work.
+ - After parsing the experiment file, the iterables are available in the
+   configuration dictionaries and can be converted to arrays with their
+   `to_array` method.
+ - When using iterables, the configuration file can be thought of as a
+   representation of multiple so-called *literal configurations* or *concrete
+   configurations*, where each entry having an iterable value is replaced
+   by one of the values that it represents contains. Iterating through those
+   configurations is possible using the `
+   [experiment|instrument]_configurations_iterator` and `configured_
    [experiment|instrument]_iterator` methods.
+ - Each of the iterable objects have an optional `default` value, which is the
+   default value used, when not iterating through it.
+
 
 # Python API
 

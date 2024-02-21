@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import product
@@ -6,6 +7,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Generator, Iterable, Iterator, Literal
 
 import numpy as np
+from ruamel import yaml
 from ruamel.yaml import YAML
 
 _yaml = YAML(typ="safe")
@@ -23,9 +25,17 @@ def load_yaml_dict_from_file(file: Path | str) -> dict:
     return data
 
 
+class ConfigurationIterable(ABC):
+    """Representation of an iterable object to be used in a configuration file."""
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[Any]:
+        raise NotImplementedError()
+
+
 @_yaml.register_class
 @dataclass
-class NumericRange:
+class NumericRange(ConfigurationIterable):
     yaml_tag: ClassVar[str] = "!range"
     start: float | int
     end: float | int
@@ -78,6 +88,48 @@ class NumericRange:
         return iter(self.to_array())
 
 
+@_yaml.register_class
+@dataclass
+class Sequence(ConfigurationIterable):
+    yaml_tag: ClassVar[str] = "!sequence"
+    elements: list[Any]
+    default: Any | None = None
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: "Sequence"):
+        if node.default is None:
+            return representer.represent_sequence(cls.yaml_tag, node.elements)
+
+        return representer.represent_mapping(
+            cls.yaml_tag, {"elements": node.elements, "default": node.default}
+        )
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
+        if isinstance(node, yaml.SequenceNode):
+            elements = constructor.construct_sequence(node, deep=True)
+            default = None
+        elif isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            elements = mapping["elements"]
+            if not isinstance(elements, list):
+                raise TypeError("!sequence elements field must be a sequence")
+
+            default = mapping.get("default", None)
+        else:
+            msg = "!sequence must be a scalar sequence of a mapping with keys "
+            msg += "elements [and default]"
+            raise TypeError(msg)
+
+        return Sequence(elements=elements, default=default)
+
+    def to_array(self) -> list[Any]:
+        return self.elements
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.elements)
+
+
 def configurations_iterator(config: dict) -> Generator[dict, None, None]:
     """
     Yields the product of the configurations represented by a collection with
@@ -98,7 +150,7 @@ def configurations_iterator(config: dict) -> Generator[dict, None, None]:
     {'a': 2.0, 'b': [0.0], 'c': 3}
     {'a': 2.0, 'b': [1.0], 'c': 3}
     """
-    range_locations: list[list[str]] = _find_numeric_range_locations(config)
+    range_locations: list[list[str]] = _find_iterables_locations(config)
     ranges = [_get_nested_element(config, loc) for loc in range_locations]
 
     for values in product(*ranges):
@@ -109,7 +161,7 @@ def configurations_iterator(config: dict) -> Generator[dict, None, None]:
         yield single_config
 
 
-def _find_numeric_range_locations(
+def _find_iterables_locations(
     collection: dict | list | Any,
     current_location: list | None = None,
 ) -> list[list]:
@@ -137,10 +189,10 @@ def _find_numeric_range_locations(
 
     for key, value in next_level_iterator:
         new_loc = current_location.copy() + [key]
-        if isinstance(value, NumericRange):
+        if isinstance(value, ConfigurationIterable):
             locations.append(new_loc)
         else:
-            locations += _find_numeric_range_locations(value, new_loc)
+            locations += _find_iterables_locations(value, new_loc)
 
     return locations
 

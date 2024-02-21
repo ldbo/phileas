@@ -62,13 +62,33 @@ b:
         self.assertIsInstance(r["a"], parsing.NumericRange)
         self.assertIsInstance(r["b"][0], parsing.NumericRange)
 
+    def test_sequence_parsing(self):
+        r = parsing.load_yaml_dict_from_file(
+            """
+a: !sequence [1, 2, 12]
+b: !sequence
+    elements: [1, 2, 3]
+    default: 12
+"""
+        )
+        self.assertEqual(r["a"], parsing.Sequence([1, 2, 12]))
+        self.assertEqual(r["b"], parsing.Sequence([1, 2, 3], default=12))
+
     def test_iteration_simple_dict(self):
+        config: dict[str, parsing.ConfigurationIterable]
         config = {"a": parsing.NumericRange(0, 1, 11)}
         configs = list(parsing.configurations_iterator(config))
         self.assertEqual(len(configs), 11)
         self.assertAlmostEqual(configs[0]["a"], 0)
         self.assertAlmostEqual(configs[1]["a"], 0.1)
         self.assertAlmostEqual(configs[10]["a"], 1)
+
+        config = {"a": parsing.Sequence(elements=[1, 2, 3])}
+        configs = list(parsing.configurations_iterator(config))
+        self.assertEqual(len(configs), 3)
+        self.assertEqual(configs[0]["a"], 1)
+        self.assertEqual(configs[1]["a"], 2)
+        self.assertEqual(configs[2]["a"], 3)
 
     def test_iteration_nested_dict(self):
         config = {"a": {"b": parsing.NumericRange(0, 1, 11)}}
