@@ -405,9 +405,7 @@ class ExperimentFactory:
         without a default value.
         """
         if configuration is None:
-            configuration = parsing.default_configuration(
-                self.experiment_config["name"]
-            )
+            configuration = parsing.default_configuration(self.experiment_config[name])
 
         experiment_instrument = self.__experiment_instruments[name]
         instrument = experiment_instrument.bench_instrument.instrument
