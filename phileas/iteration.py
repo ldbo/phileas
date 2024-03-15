@@ -15,7 +15,7 @@ those trees in order to modify the data trees generated while iterating.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Generic, Iterator, TypeVar
 
 #: Data values that can be used
@@ -59,6 +59,54 @@ class IterationMethod(IterationTree):
     """
 
     children: IterationTree | list[IterationTree] | dict[DataLiteral, IterationTree]
+
+
+@dataclass(frozen=True)
+class CartesianProduct(IterationMethod):
+    """
+    Iteration over the cartesian product of its children, starting iterating
+    over the first element first.
+    """
+
+    #: Children trees stored in a list
+    _iterated_trees: list[IterationTree] = field(
+        init=False, default_factory=list, repr=False, compare=False, hash=False
+    )
+
+    def __post_init__(self):
+        if isinstance(self.children, IterationTree):
+            self._iterated_trees.append(self.children)
+        elif isinstance(self.children, list):
+            self._iterated_trees.extend(self.children)
+        elif isinstance(self.children, dict):
+            self._iterated_trees.extend(list(self.children.values()))
+        else:
+            raise TypeError("The children don't have a supported type.")
+
+    def iterate(self) -> Iterator[DataTree]:
+        n = len(self._iterated_trees)
+        index = 0
+        iterators = [tree.iterate() for tree in self._iterated_trees]
+        current = [next(iterator) for iterator in iterators]
+
+        done = False
+        while not done:
+            yield current.copy()
+
+            iterator_exhausted = True
+            while iterator_exhausted:
+                try:
+                    current[index] = next(iterators[index])
+                    index = 0
+                    iterator_exhausted = False
+                except StopIteration:
+                    iterators[index] = self._iterated_trees[index].iterate()
+                    current[index] = next(iterators[index])
+                    index += 1
+
+                    if index == n:
+                        done = True
+                        break
 
 
 @dataclass(frozen=True)
