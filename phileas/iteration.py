@@ -16,6 +16,7 @@ those trees in order to modify the data trees generated while iterating.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from math import exp, log
 from typing import Generic, Iterator, TypeVar
 
 #: Data values that can be used
@@ -195,8 +196,80 @@ class NumericRange(IterationTree, Generic[T]):
     end: T
 
     @abstractmethod
-    def iterate(self) -> Iterator[DataLiteral]:
+    def iterate(self) -> Iterator[T]:
         raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class LinearRange(NumericRange[float]):
+    """
+    Generate `steps` values linearly spaced between `start` and `end`, both
+    included.
+    """
+
+    steps: int
+
+    def __post_init__(self):
+        if self.steps < 1 or (self.start != self.end and self.steps < 2):
+            raise ValueError("Invalid number of steps.")
+
+    def iterate(self) -> Iterator[float]:
+        if self.steps == 1:
+            yield self.start
+        else:
+            delta = self.end - self.start
+            for step in range(self.steps):
+                yield self.start + delta * step / (self.steps - 1)
+
+
+@dataclass(frozen=True)
+class GeometricRange(NumericRange[float]):
+    """
+    Generate `steps` values geometrically spaced between `start` and `end`, both
+    included.
+    """
+
+    steps: int
+
+    def __post_init__(self):
+        if self.start * self.end <= 0:
+            raise ValueError("Range limits must be non-zero and with the same sign")
+        if self.steps < 1 or (self.start != self.end and self.steps < 2):
+            raise ValueError("Invalid number of steps.")
+
+    def iterate(self) -> Iterator[float]:
+        if self.steps == 1:
+            yield self.start
+        else:
+            sign = 1 if self.start > 0 else -1
+            start = self.start * sign
+            end = self.end * sign
+            ratio = exp(log(end / start) / (self.steps - 1))
+
+            for e in range(self.steps):
+                yield sign * start * (ratio**e)
+
+
+@dataclass(frozen=True)
+class IntegerRange(NumericRange[int]):
+    """
+    Generate integer values `step` spaced, between `start` and `end`, both
+    included.
+    """
+
+    step: int = field(default=1)
+
+    def __post_init__(self):
+        if self.step < 0 or (self.start != self.end and self.step < 1):
+            raise ValueError("Invalid step size")
+
+    def iterate(self) -> Iterator[int]:
+        if self.step == 0:
+            yield self.start
+        else:
+            direction = 1 if self.end > self.start else -1
+            for m in range(1 + abs(self.end - self.start) // self.step):
+                yield self.start + direction * m * self.step
 
 
 @dataclass(frozen=True)
@@ -207,6 +280,5 @@ class Sequence(IterationTree):
 
     elements: list[DataTree]
 
-    @abstractmethod
     def iterate(self) -> Iterator[DataTree]:
         return iter(self.elements)
