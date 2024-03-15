@@ -16,7 +16,7 @@ those trees in order to modify the data trees generated while iterating.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, Iterable, TypeVar
+from typing import Generic, Iterator, TypeVar
 
 #: Data values that can be used
 DataLiteral = None | bool | str | int | float
@@ -34,7 +34,7 @@ class IterationTree(ABC):
     """
 
     @abstractmethod
-    def iterate(self) -> Iterable[DataTree]:
+    def iterate(self) -> Iterator[DataTree]:
         """
         Yields all the data trees represented by the iteration tree.
         """
@@ -80,7 +80,7 @@ class Transform(IterationTree):
         """
         raise NotImplementedError()
 
-    def iterate(self) -> Iterable[DataTree]:
+    def iterate(self) -> Iterator[DataTree]:
         for data_child in self.child.iterate():
             yield self.transform(data_child)
 
@@ -96,7 +96,7 @@ class IterationLiteral(IterationTree):
 
     value: DataLiteral
 
-    def iterate(self) -> Iterable[DataLiteral]:
+    def iterate(self) -> Iterator[DataLiteral]:
         yield self.value
 
 
@@ -113,7 +113,7 @@ class NumericRange(IterationTree, Generic[T]):
     end: T
 
     @abstractmethod
-    def iterate(self) -> Iterable[DataLiteral]:
+    def iterate(self) -> Iterator[DataLiteral]:
         raise NotImplementedError()
 
 
@@ -126,5 +126,5 @@ class Sequence(IterationTree):
     elements: list[DataTree]
 
     @abstractmethod
-    def iterate(self) -> Iterable[DataTree]:
-        return self.elements
+    def iterate(self) -> Iterator[DataTree]:
+        return iter(self.elements)
