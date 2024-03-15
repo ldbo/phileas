@@ -115,3 +115,16 @@ class NumericRange(IterationTree, Generic[T]):
     @abstractmethod
     def iterate(self) -> Iterable[DataLiteral]:
         raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class Sequence(IterationTree):
+    """
+    Sequence of data trees.
+    """
+
+    elements: list[DataTree]
+
+    @abstractmethod
+    def iterate(self) -> Iterable[DataTree]:
+        return self.elements
