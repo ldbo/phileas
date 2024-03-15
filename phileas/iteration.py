@@ -16,6 +16,7 @@ those trees in order to modify the data trees generated while iterating.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from functools import reduce
 from math import exp, log
 from typing import Generic, Iterator, TypeVar
 
@@ -40,6 +41,9 @@ class IterationTree(ABC):
         Yields all the data trees represented by the iteration tree.
         """
         raise NotImplementedError()
+
+    def __len__(self) -> int:
+        raise ValueError("This tree does not have a length.")
 
 
 ### Nodes ###
@@ -109,6 +113,9 @@ class CartesianProduct(IterationMethod):
                         done = True
                         break
 
+    def __len__(self) -> int:
+        return reduce(int.__mul__, map(len, self._iterated_trees), 1)
+
 
 @dataclass(frozen=True)
 class Union(IterationMethod):
@@ -143,6 +150,9 @@ class Union(IterationMethod):
                 current[index] = value
                 yield current
 
+    def __len__(self) -> int:
+        return sum(map(len, self._iterated_trees))
+
 
 @dataclass(frozen=True)
 class Transform(IterationTree):
@@ -167,6 +177,9 @@ class Transform(IterationTree):
         for data_child in self.child.iterate():
             yield self.transform(data_child)
 
+    def __len__(self) -> int:
+        return len(self.child)
+
 
 ### Leaves ###
 
@@ -181,6 +194,9 @@ class IterationLiteral(IterationTree):
 
     def iterate(self) -> Iterator[DataLiteral]:
         yield self.value
+
+    def __len__(self) -> int:
+        return 1
 
 
 T = TypeVar("T", bound=int | float)
@@ -221,6 +237,9 @@ class LinearRange(NumericRange[float]):
             for step in range(self.steps):
                 yield self.start + delta * step / (self.steps - 1)
 
+    def __len__(self) -> int:
+        return self.steps
+
 
 @dataclass(frozen=True)
 class GeometricRange(NumericRange[float]):
@@ -249,6 +268,9 @@ class GeometricRange(NumericRange[float]):
             for e in range(self.steps):
                 yield sign * start * (ratio**e)
 
+    def __len__(self) -> int:
+        return self.steps
+
 
 @dataclass(frozen=True)
 class IntegerRange(NumericRange[int]):
@@ -271,6 +293,9 @@ class IntegerRange(NumericRange[int]):
             for m in range(1 + abs(self.end - self.start) // self.step):
                 yield self.start + direction * m * self.step
 
+    def __len__(self) -> int:
+        return 1 + abs(self.end - self.start) // self.step
+
 
 @dataclass(frozen=True)
 class Sequence(IterationTree):
@@ -282,3 +307,6 @@ class Sequence(IterationTree):
 
     def iterate(self) -> Iterator[DataTree]:
         return iter(self.elements)
+
+    def __len__(self) -> int:
+        return len(self.elements)
