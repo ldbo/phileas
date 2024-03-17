@@ -20,6 +20,11 @@ from functools import reduce
 from math import exp, log
 from typing import Generic, Iterator, TypeVar
 
+
+#################
+### Data tree ###
+#################
+
 #: Data values that can be used
 DataLiteral = None | bool | str | int | float
 
@@ -29,10 +34,17 @@ Key = DataLiteral
 #: A data tree consists of literal leaves, and dictionary or list nodes
 DataTree = DataLiteral | dict[Key, "DataTree"] | list["DataTree"]
 
+######################
+### Iteration tree ###
+######################
+
 
 class IterationTree(ABC):
     """
-    Represents a set of data trees, as well as the way to iterate over them.
+    Represents a set of data trees, as well as the way to iterate over them. In
+    order to be able to get a single data tree from an iteration tree, they are
+    able to build a default data tree, which (usually) has the same shape as the
+    generated data tree.
     """
 
     @abstractmethod
@@ -42,8 +54,28 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def default(self) -> DataTree:
+        """
+        Returns a default data tree.
+        """
+        raise NotImplementedError()
+
     def __len__(self) -> int:
         raise ValueError("This tree does not have a length.")
+
+
+class _NoDefault:
+    """
+    Utility sentinel class used to store a default value which is not set.
+    """
+
+    pass
+
+
+# You can store this value - instead of an actual default value - in instances
+# of classes that can have a default value, but don't.
+no_default = _NoDefault()
 
 
 ### Nodes ###
@@ -87,6 +119,15 @@ class CartesianProduct(IterationMethod):
             self._iterated_trees.extend(list(self.children.values()))
         else:
             raise TypeError("The children don't have a supported type.")
+
+    def default(self) -> DataTree:
+        if isinstance(self.children, IterationTree):
+            return self.children.default()
+        elif isinstance(self.children, list):
+            return [child.default() for child in self.children]
+        else:  # isinstance(self.children, dict)
+            return {key: value.default() for key, value in self.children.items()}
+
 
     def iterate(self) -> Iterator[DataTree]:
         n = len(self._iterated_trees)
@@ -180,23 +221,32 @@ class Transform(IterationTree):
     def __len__(self) -> int:
         return len(self.child)
 
+    def default(self) -> DataTree:
+        return self.transform(self.child.default())
+
 
 ### Leaves ###
 
 
+DT = TypeVar("DT", bound=DataTree)
+
+
 @dataclass(frozen=True)
-class IterationLiteral(IterationTree):
+class IterationLiteral(IterationTree, Generic[DT]):
     """
-    Wrapper around a `DataLiteral`.
+    Wrapper around a data tree.
     """
 
-    value: DataLiteral
+    value: DT
 
-    def iterate(self) -> Iterator[DataLiteral]:
+    def iterate(self) -> Iterator[DT]:
         yield self.value
 
     def __len__(self) -> int:
         return 1
+
+    def default(self) -> DT:
+        return self.value
 
 
 T = TypeVar("T", bound=int | float)
@@ -210,12 +260,15 @@ class NumericRange(IterationTree, Generic[T]):
 
     start: T
     end: T
+    default_value: T | _NoDefault = field(default=no_default)
 
     def iterate(self) -> Iterator[T]:
         raise TypeError("Cannot iterate over a numeric range.")
 
     def default(self) -> T:
-        return self.start
+        if isinstance(self.default_value, _NoDefault):
+            raise ValueError("This range does not have a default value.")
+        return self.default_value
 
 
 @dataclass(frozen=True)
@@ -225,7 +278,8 @@ class LinearRange(NumericRange[float]):
     included.
     """
 
-    steps: int
+    # Have to specify a default value because `default_value` has one
+    steps: int = field(default=2)
 
     def __post_init__(self):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
@@ -250,11 +304,12 @@ class GeometricRange(NumericRange[float]):
     included.
     """
 
-    steps: int
+    # Have to specify a default value because `default_value` has one
+    steps: int = field(default=2)
 
     def __post_init__(self):
         if self.start * self.end <= 0:
-            raise ValueError("Range limits must be non-zero and with the same sign")
+            raise ValueError("Range limits must be non-zero and with the same sign.")
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
@@ -302,13 +357,23 @@ class IntegerRange(NumericRange[int]):
 @dataclass(frozen=True)
 class Sequence(IterationTree):
     """
-    Sequence of data trees.
+    Non-empty sequence of data trees.
     """
 
     elements: list[DataTree]
+    default_value: DataTree | _NoDefault = field(default=no_default)
+
+    def __post_init__(self):
+        if len(self.elements) == 0:
+            raise ValueError("Empty elements are forbidden.")
 
     def iterate(self) -> Iterator[DataTree]:
         return iter(self.elements)
 
     def __len__(self) -> int:
         return len(self.elements)
+
+    def default(self) -> DataTree:
+        if isinstance(self.default_value, _NoDefault):
+            raise TypeError("This sequence does not have a default value")
+        return self.elements[0]

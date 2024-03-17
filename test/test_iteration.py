@@ -38,16 +38,16 @@ def iteration_literal(draw):
 
 @st.composite
 def numeric_range(draw):
-    return NumericRange(draw(st.floats()), draw(st.floats()))
+    return NumericRange(draw(st.floats()), draw(st.floats()), default_value=1)
 
 
 @st.composite
 def linear_range(draw):
     start, end = draw(st.floats()), draw(st.floats())
     if start == end:
-        return LinearRange(start, end, 1)
+        return LinearRange(start, end, steps=1, default_value=1)
     else:
-        return LinearRange(start, end, draw(st.integers(2, 3)))
+        return LinearRange(start, end, steps=draw(st.integers(2, 3)))
 
 
 @st.composite
@@ -57,19 +57,23 @@ def geometric_range(draw):
     end = sign * draw(
         st.floats(min_value=0, exclude_min=True).filter(lambda e: abs(e * start) > 0)
     )
-    return GeometricRange(start, end, draw(st.integers(2, 3)))
+    return GeometricRange(start, end, steps=draw(st.integers(2, 3)), default_value=1.0)
 
 
 @st.composite
 def integer_range(draw):
     start, end = draw(st.integers(-3, 3)), draw(st.integers(-3, 3))
     if start == end:
-        return IntegerRange(start, end, 1)
+        return IntegerRange(start, end, default_value=1)
     else:
-        return IntegerRange(start, end, draw(st.integers(2, 3)))
+        return IntegerRange(start, end, step=draw(st.integers(2, 3)), default_value=1)
 
 
-sequence = st.builds(Sequence, st.lists(data_tree, min_size=1, max_size=3))
+@st.composite
+def sequence(draw):
+    seq = draw(st.lists(data_tree, min_size=1, max_size=3))
+    return Sequence(seq, default_value=1)
+
 
 iteration_leaf = st.one_of(
     iteration_literal(),
@@ -77,7 +81,7 @@ iteration_leaf = st.one_of(
     linear_range(),
     geometric_range(),
     integer_range(),
-    sequence,
+    sequence(),
 )
 
 ## Iteration nodes ##
@@ -108,16 +112,16 @@ class TestIteration(unittest.TestCase):
         self.assertEqual(len(r), r.steps)
 
     def test_linear_range_iteration(self):
-        r = LinearRange(0.0, 5.0, 6)
+        r = LinearRange(0.0, 5.0, steps=6)
         self.assertEqual(list(r.iterate()), [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
 
     def test_geometric_range_iteration(self):
-        r = GeometricRange(1.0, 8.0, 4)
+        r = GeometricRange(1.0, 8.0, steps=4)
         self.assertEqual(list(r.iterate()), [1.0, 2.0, 4.0, 8.0])
 
     @given(st.integers(-10, 10), st.integers(-10, 10), st.integers(10))
     def test_integer_range_iteration(self, start: int, end: int, step: int):
-        r = IntegerRange(start, end, step)
+        r = IntegerRange(start, end, step=step)
         iterator = r.iterate()
         value = next(iterator)
         self.assertEqual(value, start)
@@ -134,7 +138,7 @@ class TestIteration(unittest.TestCase):
         else:
             self.assertGreaterEqual(value, end)
 
-    @given(sequence)
+    @given(sequence())
     def test_sequence_iteration(self, sequence: Sequence):
         self.assertEqual(list(sequence.iterate()), sequence.elements)
 
