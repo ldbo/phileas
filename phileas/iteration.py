@@ -211,9 +211,11 @@ class NumericRange(IterationTree, Generic[T]):
     start: T
     end: T
 
-    @abstractmethod
     def iterate(self) -> Iterator[T]:
-        raise NotImplementedError()
+        raise TypeError("Cannot iterate over a numeric range.")
+
+    def default(self) -> T:
+        return self.start
 
 
 @dataclass(frozen=True)

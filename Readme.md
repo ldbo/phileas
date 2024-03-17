@@ -154,9 +154,11 @@ files:
 - Test files are stored in the `test` module. You can use `unittest` to
   automatically discover and run them, using for example `python -m unittest`
   from the root of the repository.
+- Some tests files implement property-based testing, using
+  [https://hypothesis.readthedocs.io](Hypothesis) for data generation.
 - Test `TestFunctional1`, and the associated `functional_1_
   {config.py,experiment.yaml,bench.yaml}` configuration files are a good
-  example to start using the Phileas.
-- Pre-commit hooks are managed by [pre-commmit]
-  (https://pre-commit.com/), which is a developer dependency. To use them, call
-  `pre-commit install` from the project virtual environment.
+  example to start using Phileas.
+- Pre-commit hooks are managed by [pre-commmit](https://pre-commit.com/), which
+  is a developer dependency. To use them, call `pre-commit install` from the
+  project virtual environment.
