@@ -1,16 +1,20 @@
+import unittest
+
+import hypothesis
+from hypothesis import given
 from hypothesis import strategies as st
 
 from phileas.iteration import (
-    IterationLiteral,
-    NumericRange,
-    LinearRange,
+    CartesianProduct,
     GeometricRange,
     IntegerRange,
+    IterationLiteral,
+    IterationTree,
+    LinearRange,
+    NumericRange,
     Sequence,
-    CartesianProduct,
     Union,
 )
-
 
 ### Hypothesis strategies ###
 
@@ -92,4 +96,65 @@ def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
 iteration_tree = st.recursive(
     iteration_leaf, lambda children: iteration_tree_node(children), max_leaves=10
 )
+
+
+### Tests ###
+
+
+class TestIteration(unittest.TestCase):
+    ## Iteration leaves ##
+    @given(linear_range() | geometric_range())
+    def test_linear_and_geometric_range_length(self, r: LinearRange | GeometricRange):
+        self.assertEqual(len(r), r.steps)
+
+    def test_linear_range_iteration(self):
+        r = LinearRange(0.0, 5.0, 6)
+        self.assertEqual(list(r.iterate()), [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+
+    def test_geometric_range_iteration(self):
+        r = GeometricRange(1.0, 8.0, 4)
+        self.assertEqual(list(r.iterate()), [1.0, 2.0, 4.0, 8.0])
+
+    @given(st.integers(-10, 10), st.integers(-10, 10), st.integers(10))
+    def test_integer_range_iteration(self, start: int, end: int, step: int):
+        r = IntegerRange(start, end, step)
+        iterator = r.iterate()
+        value = next(iterator)
+        self.assertEqual(value, start)
+        while True:
+            try:
+                next_value = next(iterator)
+                self.assertEqual(abs(next_value - value), step)
+                value = next_value
+            except StopIteration:
+                break
+
+        if end > start:
+            self.assertGreaterEqual(end, value)
+        else:
+            self.assertGreaterEqual(value, end)
+
+    @given(sequence)
+    def test_sequence_iteration(self, sequence: Sequence):
+        self.assertEqual(list(sequence.iterate()), sequence.elements)
+
+    ## Iteration nodes ##
+
+    @given(iteration_tree)
+    def test_iteration_tree_generation(self, tree: IterationTree):
+        """
+        This test is voluntarily left empty, in order to show when the iteration
+        tree strategies are broken.
+        """
+        del tree
+
+    @given(iteration_tree)
+    def test_len_consistent_with_iterate(self, tree: IterationTree):
+        try:
+            n = len(tree)
+            formatted_list = "\n".join(f" - {s}" for s in tree.iterate())
+            hypothesis.note(f"The iterated list is \n{formatted_list}")
+            self.assertEqual(n, len(list(tree.iterate())))
+        except ValueError:
+            return
 
