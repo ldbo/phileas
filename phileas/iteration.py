@@ -18,8 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import reduce
 from math import exp, log
-from typing import Generic, Iterator, TypeVar
-
+from typing import Callable, Generic, Iterator, TypeVar
 
 #################
 ### Data tree ###
@@ -304,6 +303,18 @@ class Transform(IterationTree):
 
     def default(self) -> DataTree:
         return self.transform(self.child.default())
+
+
+@dataclass(frozen=True)
+class FunctionalTranform(Transform):
+    """
+    Transform node using its function attribute to modify its child.
+    """
+
+    f: Callable[[DataTree], DataTree]
+
+    def transform(self, data_tree: DataTree) -> DataTree:
+        return self.f(data_tree)
 
 
 ### Leaves ###

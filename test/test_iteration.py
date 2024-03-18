@@ -1,5 +1,5 @@
-from itertools import product
 import unittest
+from itertools import product
 
 import hypothesis
 from hypothesis import given
@@ -7,6 +7,8 @@ from hypothesis import strategies as st
 
 from phileas.iteration import (
     CartesianProduct,
+    DataTree,
+    FunctionalTranform,
     GeometricRange,
     IntegerRange,
     IterationLiteral,
@@ -14,6 +16,7 @@ from phileas.iteration import (
     LinearRange,
     NumericRange,
     Sequence,
+    Transform,
     Union,
 )
 
@@ -103,8 +106,19 @@ def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
     return Node(children)
 
 
+class IdTransform(Transform):
+    def transform(self, data_tree: DataTree) -> DataTree:
+        return data_tree
+
+
+def transform(child: st.SearchStrategy):
+    return st.builds(IdTransform, child)
+
+
 iteration_tree = st.recursive(
-    iteration_leaf, lambda children: iteration_tree_node(children), max_leaves=10
+    iteration_leaf,
+    lambda children: iteration_tree_node(children) | transform(children),
+    max_leaves=10,
 )
 
 
@@ -153,8 +167,7 @@ class TestIteration(unittest.TestCase):
     @given(iteration_tree)
     def test_iteration_tree_generation(self, tree: IterationTree):
         """
-        This test is voluntarily left empty, in order to show when the iteration
-        tree strategies are broken.
+        This test is voluntarily left empty, in order to test tree strategies.
         """
         del tree
 
@@ -245,3 +258,20 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    def test_transform(self):
+        class Add1Tranform(Transform):
+            def transform(self, data_tree: int) -> int:  # type: ignore
+                return data_tree + 1
+
+        t = Add1Tranform(IntegerRange(0, 2))
+        t_result = list(t.iterate())
+        self.assertEqual(t_result, [1, 2, 3])
+
+    def test_functional_transform(self):
+        def add1(data_tree: DataTree) -> DataTree:
+            return data_tree + 1  # type: ignore
+
+        t = FunctionalTranform(IntegerRange(0, 2), add1)
+        t_result = list(t.iterate())
+        self.assertEqual(t_result, [1, 2, 3])
