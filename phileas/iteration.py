@@ -95,7 +95,8 @@ class IterationMethod(IterationTree):
     verify that it cannot be done by sub-classing `IterationMethod` instead.
     """
 
-    children: IterationTree | list[IterationTree] | dict[DataLiteral, IterationTree]
+    #: The children of the node. It must not be empty.
+    children: list[IterationTree] | dict[Key, IterationTree]
 
 
 @dataclass(frozen=True)
@@ -111,9 +112,8 @@ class CartesianProduct(IterationMethod):
     )
 
     def __post_init__(self):
-        if isinstance(self.children, IterationTree):
-            self._iterated_trees.append(self.children)
-        elif isinstance(self.children, list):
+        if len(self.children) == 0:
+            raise ValueError("Empty children are forbidden.")
             self._iterated_trees.extend(self.children)
         elif isinstance(self.children, dict):
             self._iterated_trees.extend(list(self.children.values()))
