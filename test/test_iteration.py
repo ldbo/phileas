@@ -133,16 +133,16 @@ class TestIteration(unittest.TestCase):
 
     def test_linear_range_iteration(self):
         r = LinearRange(0.0, 5.0, steps=6)
-        self.assertEqual(list(r.iterate()), [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+        self.assertEqual(list(r), [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
 
     def test_geometric_range_iteration(self):
         r = GeometricRange(1.0, 8.0, steps=4)
-        self.assertEqual(list(r.iterate()), [1.0, 2.0, 4.0, 8.0])
+        self.assertEqual(list(r), [1.0, 2.0, 4.0, 8.0])
 
     @given(st.integers(-10, 10), st.integers(-10, 10), st.integers(10))
     def test_integer_range_iteration(self, start: int, end: int, step: int):
-        r = IntegerRange(start, end, step=step)
-        iterator = r.iterate()
+        r = iter(IntegerRange(start, end, step=step))
+        iterator = r
         value = next(iterator)
         self.assertEqual(value, start)
         while True:
@@ -160,7 +160,7 @@ class TestIteration(unittest.TestCase):
 
     @given(sequence())
     def test_sequence_iteration(self, sequence: Sequence):
-        self.assertEqual(list(sequence.iterate()), sequence.elements)
+        self.assertEqual(list(sequence), sequence.elements)
 
     ## Iteration nodes ##
 
@@ -175,9 +175,9 @@ class TestIteration(unittest.TestCase):
     def test_len_consistent_with_iterate(self, tree: IterationTree):
         try:
             n = len(tree)
-            formatted_list = "\n".join(f" - {s}" for s in tree.iterate())
+            formatted_list = "\n".join(f" - {s}" for s in tree)
             hypothesis.note(f"The iterated list is \n{formatted_list}")
-            self.assertEqual(n, len(list(tree.iterate())))
+            self.assertEqual(n, len(list(tree)))
         except ValueError:
             return
 
@@ -185,12 +185,10 @@ class TestIteration(unittest.TestCase):
     def test_cartesian_product_iteration(self, children: list[IterationTree]):
         c = CartesianProduct(children)
         hypothesis.note(f"Iteration tree: {c}")
-        iterated_list = list(c.iterate())
+        iterated_list = list(c)
         formatted_list = "\n".join(f" - {s}" for s in iterated_list)
         hypothesis.note(f"Iterated list:\n{formatted_list}")
-        expected_list = list(
-            map(list, product(*[child.iterate() for child in children]))
-        )
+        expected_list = list(map(list, product(*children)))
         formatted_list = "\n".join(f" - {s}" for s in expected_list)
         hypothesis.note(f"Expected list:\n{formatted_list}")
         self.assertEqual(iterated_list, expected_list)
@@ -204,7 +202,7 @@ class TestIteration(unittest.TestCase):
             },
             lazy=True,
         )
-        iterated_list = list(u.iterate())
+        iterated_list = list(u)
         expected_list = [
             {0: 1, 1: 1, 2: 1},
             {2: 2},
@@ -226,7 +224,7 @@ class TestIteration(unittest.TestCase):
                 2: IntegerRange(1, 2),
             }
         )
-        iterated_list = list(u.iterate())
+        iterated_list = list(u)
         expected_list = [
             {0: 1, 1: 10},
             {0: 2, 1: 10},
@@ -247,7 +245,7 @@ class TestIteration(unittest.TestCase):
             },
             lazy=True,
         )
-        iterated_list = list(u.iterate())
+        iterated_list = list(u)
         expected_list = [
             {0: 1, 1: 10},
             {0: 2},
@@ -265,7 +263,7 @@ class TestIteration(unittest.TestCase):
                 return data_tree + 1
 
         t = Add1Tranform(IntegerRange(0, 2))
-        t_result = list(t.iterate())
+        t_result = list(t)
         self.assertEqual(t_result, [1, 2, 3])
 
     def test_functional_transform(self):
@@ -273,5 +271,5 @@ class TestIteration(unittest.TestCase):
             return data_tree + 1  # type: ignore
 
         t = FunctionalTranform(IntegerRange(0, 2), add1)
-        t_result = list(t.iterate())
+        t_result = list(t)
         self.assertEqual(t_result, [1, 2, 3])

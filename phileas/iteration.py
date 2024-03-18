@@ -6,8 +6,8 @@ The `DataTree` stores an actual data point, which consists of nested `dict` and
 
 Then, the `IterationTree` provides a framework to build complex searches over
 data trees. Its leaves consist of literal values, or data iterators. Those
-leaves can simply be iterated over using `IterationTree.iterate`, but they can
-also be used to build more complex iteration trees.
+leaves can simply be iterated over, but they can also be used to build more
+complex iteration trees.
 
 First, they can be combined with `IterationMethod` nodes, which provide a way to
 iterate over multiple data sources. Then, `Transform` nodes can be inserted in
@@ -47,11 +47,18 @@ class IterationTree(ABC):
     """
 
     @abstractmethod
-    def iterate(self) -> Iterator[DataTree]:
+    def __iter__(self) -> Iterator[DataTree]:
         """
         Yields all the data trees represented by the iteration tree.
         """
         raise NotImplementedError()
+
+    def iterate(self) -> Iterator[DataTree]:
+        """
+        Other name of `__iter__`, which can be more explicit in for example
+        `list(tree.iterate())`.
+        """
+        return self.__iter__()
 
     @abstractmethod
     def default(self) -> DataTree:
@@ -90,7 +97,7 @@ class IterationMethod(IterationTree):
     trees.
 
     In order to implement a concrete iteration method, you should sub-class
-    `IterationMethod` and implement the `iterate` method.
+    `IterationMethod` and implement the `__iter__` method.
 
     This should remain the only node in an iteration tree that can hold `dict`
     and `list`. If you are tempted to create another node doing so, you should
@@ -159,14 +166,14 @@ class IterationMethod(IterationTree):
 @dataclass(frozen=True)
 class CartesianProduct(IterationMethod):
     """
-    Iteration over the cartesian product of the children. The iteration order
-    is the same as `itertools.product`. In other words, `iterate` will behave
+    Iteration over the cartesian product of the children. The iteration order is
+    the same as `itertools.product`. In other words, iteration will behave
     roughly as
 
     ```py
-    for v1 in c1.iterate():
-        for v2 in c2.iterate():
-            for v3 in c3.iterate():
+    for v1 in c1:
+        for v2 in c2:
+            for v3 in c3:
                 yield [v1, v2, v3]
     ```
     """
@@ -174,14 +181,14 @@ class CartesianProduct(IterationMethod):
     def __base_value(self) -> list[DataTree] | dict[Key, DataTree]:
         """
         Method used instead of `default`, allowing to build the shape of the
-        elements yielded by `iterate` with children not having a default value.
+        elements yielded by `__iter__` with children not having a default value.
         """
         if isinstance(self.children, list):
             return [None for _ in self.children]
         else:
             return {key: None for key in self.children}
 
-    def iterate(self) -> Iterator[DataTree]:
+    def __iter__(self) -> Iterator[DataTree]:
         """
         Does not require the children iteration trees to have a default value.
 
@@ -189,7 +196,7 @@ class CartesianProduct(IterationMethod):
         """
         n = len(self._iterated_trees)
         index = n - 1
-        iterators = [tree.iterate() for tree in self._iterated_trees]
+        iterators = [iter(tree) for tree in self._iterated_trees]
         base = self.__base_value()
         for key, iterator in zip(self._keys, iterators):
             base[key] = next(iterator)  # type: ignore[index]
@@ -208,7 +215,7 @@ class CartesianProduct(IterationMethod):
                     index = n - 1
                     iterator_exhausted = False
                 except StopIteration:
-                    iterators[index] = self._iterated_trees[index].iterate()
+                    iterators[index] = iter(self._iterated_trees[index])
                     base[self._keys[index]] = next(iterators[index])  # type: ignore[index]
                     index -= 1
 
@@ -247,13 +254,13 @@ class Union(IterationMethod):
         else:
             return self.default()  # type: ignore[return-value]
 
-    def iterate(self) -> Iterator[DataTree]:
+    def __iter__(self) -> Iterator[DataTree]:
         """
         Does not require the children trees to have a default value.
 
         Implements lazy iteration.
         """
-        iterators = [tree.iterate() for tree in self._iterated_trees]
+        iterators = [iter(tree) for tree in self._iterated_trees]
         base = self.__base_value()
         current = base.copy()
 
@@ -294,8 +301,8 @@ class Transform(IterationTree):
         """
         raise NotImplementedError()
 
-    def iterate(self) -> Iterator[DataTree]:
-        for data_child in self.child.iterate():
+    def __iter__(self) -> Iterator[DataTree]:
+        for data_child in self.child:
             yield self.transform(data_child)
 
     def __len__(self) -> int:
@@ -331,7 +338,7 @@ class IterationLiteral(IterationTree, Generic[DT]):
 
     value: DT
 
-    def iterate(self) -> Iterator[DT]:
+    def __iter__(self) -> Iterator[DT]:
         yield self.value
 
     def __len__(self) -> int:
@@ -354,7 +361,7 @@ class NumericRange(IterationTree, Generic[T]):
     end: T
     default_value: T | _NoDefault = field(default=no_default)
 
-    def iterate(self) -> Iterator[T]:
+    def __iter__(self) -> Iterator[T]:
         raise TypeError("Cannot iterate over a numeric range.")
 
     def default(self) -> T:
@@ -377,7 +384,7 @@ class LinearRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def iterate(self) -> Iterator[float]:
+    def __iter__(self) -> Iterator[float]:
         if self.steps == 1:
             yield self.start
         else:
@@ -405,7 +412,7 @@ class GeometricRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def iterate(self) -> Iterator[float]:
+    def __iter__(self) -> Iterator[float]:
         if self.steps == 1:
             yield self.start
         else:
@@ -434,7 +441,7 @@ class IntegerRange(NumericRange[int]):
         if self.step < 0 or (self.start != self.end and self.step < 1):
             raise ValueError("Invalid step size")
 
-    def iterate(self) -> Iterator[int]:
+    def __iter__(self) -> Iterator[int]:
         if self.step == 0:
             yield self.start
         else:
@@ -459,7 +466,7 @@ class Sequence(IterationTree):
         if len(self.elements) == 0:
             raise ValueError("Empty elements are forbidden.")
 
-    def iterate(self) -> Iterator[DataTree]:
+    def __iter__(self) -> Iterator[DataTree]:
         return iter(self.elements)
 
     def __len__(self) -> int:
