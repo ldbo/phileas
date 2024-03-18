@@ -72,9 +72,12 @@ class _NoDefault:
 
     pass
 
+    def __repr__(self) -> str:
+        return "NoDefault()"
 
-# You can store this value - instead of an actual default value - in instances
-# of classes that can have a default value, but don't.
+
+#: You can store this value - instead of an actual default value - in instances
+#: of classes that can have a default value, but don't.
 no_default = _NoDefault()
 
 
@@ -98,27 +101,52 @@ class IterationMethod(IterationTree):
     #: The children of the node. It must not be empty.
     children: list[IterationTree] | dict[Key, IterationTree]
 
+    #: Notify the iteration method to be lazy. For now, this feature is only
+    #: supported for `dict` children. In this case, lazy iteration will just
+    #: yield the keys that have changed at each step.
+    #:
+    #: Note that concrete iteration method classes are not required to actually
+    #: implement lazy iteration, and if they don't, they will probably do so
+    #: silently. Refer to their documentation or their implementation.
+    lazy: bool = field(default=False)
 
-@dataclass(frozen=True)
-class CartesianProduct(IterationMethod):
-    """
-    Iteration over the cartesian product of its children, starting iterating
-    over the first element first.
-    """
-
-    #: Children trees stored in a list
+    #: Children trees stored in a list. This allows child-class to only
+    #: implement iteration over lists.
+    #:
+    #: For now, dictionaries are sorted by their key value.
     _iterated_trees: list[IterationTree] = field(
+        init=False, default_factory=list, repr=False, compare=False, hash=False
+    )
+
+    #: Access keys for the children trees, such that
+    #: `children[_keys[i]] = _iterated_trees[i]`.
+    #:
+    #: Note that the previous statement is not properly typed, as the current
+    #: type hints do not state that `_keys` contains valid keys for `children`.
+    #: However, `IterationMethod.__post_init__` takes care of the validity of
+    #: the runtime types. Because of that, ignoring type checks can be required
+    #: when implementig concrete iteration methods.
+    _keys: list[Key | int] = field(
         init=False, default_factory=list, repr=False, compare=False, hash=False
     )
 
     def __post_init__(self):
         if len(self.children) == 0:
             raise ValueError("Empty children are forbidden.")
+
+        if isinstance(self.children, list):
             self._iterated_trees.extend(self.children)
+            self._keys.extend(range(len(self.children)))
         elif isinstance(self.children, dict):
-            self._iterated_trees.extend(list(self.children.values()))
+            keys = sorted(self.children.keys())  # type: ignore[type-var]
+            self._keys.extend(keys)
+            trees = (self.children[key] for key in keys)
+            self._iterated_trees.extend(trees)
         else:
             raise TypeError("The children don't have a supported type.")
+
+        if self.lazy and not isinstance(self.children, dict):
+            raise TypeError("Lazy iteration is only supported for dictionary children")
 
     def default(self) -> DataTree:
         if isinstance(self.children, IterationTree):
@@ -129,28 +157,63 @@ class CartesianProduct(IterationMethod):
             return {key: value.default() for key, value in self.children.items()}
 
 
+@dataclass(frozen=True)
+class CartesianProduct(IterationMethod):
+    """
+    Iteration over the cartesian product of the children. The iteration order
+    is the same as `itertools.product`. In other words, `iterate` will behave
+    roughly as
+
+    ```py
+    for v1 in c1.iterate():
+        for v2 in c2.iterate():
+            for v3 in c3.iterate():
+                yield [v1, v2, v3]
+    ```
+    """
+
+    def __base_value(self) -> list[DataTree] | dict[Key, DataTree]:
+        """
+        Method used instead of `default`, allowing to build the shape of the
+        elements yielded by `iterate` with children not having a default value.
+        """
+        if isinstance(self.children, list):
+            return [None for _ in self.children]
+        else:
+            return {key: None for key in self.children}
+
     def iterate(self) -> Iterator[DataTree]:
+        """
+        Does not require the children iteration trees to have a default value.
+
+        Implements lazy iteration.
+        """
         n = len(self._iterated_trees)
-        index = 0
+        index = n - 1
         iterators = [tree.iterate() for tree in self._iterated_trees]
-        current = [next(iterator) for iterator in iterators]
+        base = self.__base_value()
+        for key, iterator in zip(self._keys, iterators):
+            base[key] = next(iterator)  # type: ignore[index]
 
         done = False
         while not done:
-            yield current.copy()
+            yield base.copy()
+
+            if self.lazy:
+                base = {}
 
             iterator_exhausted = True
             while iterator_exhausted:
                 try:
-                    current[index] = next(iterators[index])
-                    index = 0
+                    base[self._keys[index]] = next(iterators[index])  # type: ignore[index]
+                    index = n - 1
                     iterator_exhausted = False
                 except StopIteration:
                     iterators[index] = self._iterated_trees[index].iterate()
-                    current[index] = next(iterators[index])
-                    index += 1
+                    base[self._keys[index]] = next(iterators[index])  # type: ignore[index]
+                    index -= 1
 
-                    if index == n:
+                    if index == -1:
                         done = True
                         break
 
@@ -161,35 +224,53 @@ class CartesianProduct(IterationMethod):
 @dataclass(frozen=True)
 class Union(IterationMethod):
     """
-    Iteration over one varying field at a time, starting with the first one.
+    Iteration over one child at a time, starting with the first one.
+
+    For children that have a default value, they will be reset to it when they
+    are not being iterated. However, there will be no complain about children
+    not implementing a default value.
     """
 
-    #: Children trees stored in a list
-    _iterated_trees: list[IterationTree] = field(
-        init=False, default_factory=list, repr=False, compare=False, hash=False
-    )
+    def __base_value(self) -> list[DataTree] | dict[Key, DataTree]:
+        """
+        Method used instead of `default`, implementing a best-effort default
+        value if the children are specified as a dictionary.
+        """
+        if isinstance(self.children, dict):
+            base = {}
+            for key, tree in self.children.items():
+                try:
+                    base[key] = tree.default()
+                except ValueError:
+                    pass
 
-    def __post_init__(self):
-        if isinstance(self.children, IterationTree):
-            self._iterated_trees.append(self.children)
-        elif isinstance(self.children, list):
-            self._iterated_trees.extend(self.children)
-        elif isinstance(self.children, dict):
-            self._iterated_trees.extend(list(self.children.values()))
+            return base
         else:
-            raise TypeError("The children don't have a supported type.")
+            return self.default()  # type: ignore[return-value]
 
     def iterate(self) -> Iterator[DataTree]:
-        iterators = [tree.iterate() for tree in self._iterated_trees]
-        base = [next(iterator) for iterator in iterators]
+        """
+        Does not require the children trees to have a default value.
 
-        yield base.copy()
+        Implements lazy iteration.
+        """
+        iterators = [tree.iterate() for tree in self._iterated_trees]
+        base = self.__base_value()
+        current = base.copy()
 
         for index, iterator in enumerate(iterators):
             for value in iterator:
-                current = base.copy()
-                current[index] = value
+                current[self._keys[index]] = value  # type: ignore[index]
                 yield current
+
+                if self.lazy:
+                    current = {}
+                else:
+                    current = base.copy()
+
+            key = self._keys[index]
+            if key in base:
+                current[key] = base[key]  # type: ignore[index]
 
     def __len__(self) -> int:
         return sum(map(len, self._iterated_trees))

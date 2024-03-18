@@ -1,3 +1,4 @@
+from itertools import product
 import unittest
 
 import hypothesis
@@ -43,7 +44,8 @@ def numeric_range(draw):
 
 @st.composite
 def linear_range(draw):
-    start, end = draw(st.floats()), draw(st.floats())
+    start = draw(st.floats(min_value=-10, max_value=10, allow_nan=False))
+    end = draw(st.floats(min_value=-10, max_value=10, allow_nan=False))
     if start == end:
         return LinearRange(start, end, steps=1, default_value=1)
     else:
@@ -53,9 +55,13 @@ def linear_range(draw):
 @st.composite
 def geometric_range(draw):
     sign = draw(st.sampled_from([-1, 1]))
-    start = sign * draw(st.floats(min_value=0, exclude_min=True))
+    start = sign * draw(
+        st.floats(min_value=0, max_value=10, exclude_min=True, allow_nan=False)
+    )
     end = sign * draw(
-        st.floats(min_value=0, exclude_min=True).filter(lambda e: abs(e * start) > 0)
+        st.floats(min_value=0, max_value=10, exclude_min=True, allow_nan=False).filter(
+            lambda e: abs(e * start) > 0
+        )
     )
     return GeometricRange(start, end, steps=draw(st.integers(2, 3)), default_value=1.0)
 
@@ -91,8 +97,8 @@ iteration_leaf = st.one_of(
 def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
     Node = draw(st.sampled_from([CartesianProduct, Union]))
     children = draw(
-        st.lists(children, min_size=1, max_size=3)
-        | st.dictionaries(data_literal, children, min_size=1, max_size=3)
+        st.lists(children, min_size=1, max_size=4)
+        | st.dictionaries(data_literal, children, min_size=1, max_size=4)
     )
     return Node(children)
 
@@ -162,3 +168,80 @@ class TestIteration(unittest.TestCase):
         except ValueError:
             return
 
+    @given(st.lists(linear_range(), min_size=1, max_size=5))
+    def test_cartesian_product_iteration(self, children: list[IterationTree]):
+        c = CartesianProduct(children)
+        hypothesis.note(f"Iteration tree: {c}")
+        iterated_list = list(c.iterate())
+        formatted_list = "\n".join(f" - {s}" for s in iterated_list)
+        hypothesis.note(f"Iterated list:\n{formatted_list}")
+        expected_list = list(
+            map(list, product(*[child.iterate() for child in children]))
+        )
+        formatted_list = "\n".join(f" - {s}" for s in expected_list)
+        hypothesis.note(f"Expected list:\n{formatted_list}")
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_cartesian_product_lazy_iteration(self):
+        u = CartesianProduct(
+            {
+                0: IntegerRange(1, 2, default_value=10),
+                1: IntegerRange(1, 2, default_value=10),
+                2: IntegerRange(1, 2),
+            },
+            lazy=True,
+        )
+        iterated_list = list(u.iterate())
+        expected_list = [
+            {0: 1, 1: 1, 2: 1},
+            {2: 2},
+            {1: 2, 2: 1},
+            {2: 2},
+            {0: 2, 1: 1, 2: 1},
+            {2: 2},
+            {1: 2, 2: 1},
+            {2: 2},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_iteration(self):
+        u = Union(
+            {
+                0: IntegerRange(1, 2, default_value=10),
+                1: IntegerRange(1, 2, default_value=10),
+                2: IntegerRange(1, 2),
+            }
+        )
+        iterated_list = list(u.iterate())
+        expected_list = [
+            {0: 1, 1: 10},
+            {0: 2, 1: 10},
+            {0: 10, 1: 1},
+            {0: 10, 1: 2},
+            {0: 10, 1: 10, 2: 1},
+            {0: 10, 1: 10, 2: 2},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_lazy_iteration(self):
+        u = Union(
+            {
+                0: IntegerRange(1, 2, default_value=10),
+                1: IntegerRange(1, 2, default_value=10),
+                2: IntegerRange(1, 2),
+            },
+            lazy=True,
+        )
+        iterated_list = list(u.iterate())
+        expected_list = [
+            {0: 1, 1: 10},
+            {0: 2},
+            {0: 10, 1: 1},
+            {1: 2},
+            {1: 10, 2: 1},
+            {2: 2},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
