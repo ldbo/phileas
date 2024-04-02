@@ -16,6 +16,8 @@ those trees in order to modify the data trees generated while iterating.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import dataclasses
+
 from functools import reduce
 from math import exp, log
 from typing import Callable, Generic, Iterator, TypeVar
@@ -53,6 +55,21 @@ PseudoDataTree = (
 ######################
 ### Iteration tree ###
 ######################
+
+
+class _Child:
+    """
+    Utility sentinel class used to represent the index of the only child of a
+    1-ary iteration node.
+    """
+
+    def __repr__(self) -> str:
+        return "Child()"
+
+
+child = _Child()
+
+ChildPath = list[Key | _Child]
 
 
 class IterationTree(ABC):
@@ -98,6 +115,139 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
+    # Path API
+    #
+    # Internal nodes, and the structure, of iteration trees are to be modified
+    # using a path-based API.
+    #
+    # After using a modification function, only the output of the function
+    # should be used, and `self` should be discarded.
+
+    def get(self, path: ChildPath) -> "IterationTree":
+        """
+        Get a node inside a tree. It should not be used to modify the tree.
+        """
+        current = self
+        for key in path:
+            current = current._get(key)
+
+        return current
+
+    @abstractmethod
+    def _get(self, child_key: Key | _Child) -> "IterationTree":
+        """
+        Returns the root child with the given key, or raises a `KeyError` if
+        there is no child with this key.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _insert_child(
+        self, child_key: Key | _Child, child: "IterationTree"
+    ) -> "IterationTree":
+        """
+        Insert a new child tree to the root and return the newly created tree.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _remove_child(self, child_key: Key | _Child) -> "IterationTree":
+        """
+        Remove a child of the root, and return the newly created tree. Raises a
+        `KeyError` if there is no child with this key.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _replace_root(
+        self, Node: type["IterationTree"], *args, **kwargs
+    ) -> "IterationTree":
+        """
+        Change the root node of a tree, keeping the remaining of the tree
+        unmodified. In order to keep a valid tree structure, `Node` must have
+        be of the same type as the current root, otherwise a `TypeError` is
+        raised.
+        """
+        raise NotImplementedError()
+
+    def insert_child(
+        self, path: ChildPath, tree: typing.Union["IterationTree", None]
+    ) -> "IterationTree":
+        """
+        Insert a child anywhere in the tree, whose location is specified by path
+        argument. Return the newly created tree.
+
+        If there is already a node at this location, it will be replaced.
+
+        If the specified tree is `None`, a node is supposed to exist at this
+        location (otherwise, a `KeyError` is raised), and will be removed if
+        possible. Only iteration methods nodes will support child removal, see
+        their implementation of `_remove_child`. In any other case, a
+        `TypeError` is raised.
+
+        Note that the root of a tree cannot be removed, so specifying an empty
+        path with a `None` tree will raise a `KeyError`.
+        """
+        if tree is None and len(path) == 1:
+            return self._remove_child(path[0])
+        if len(path) == 0:
+            if tree is None:
+                raise KeyError("Cannot remove the root of an iteration tree.")
+
+            return tree
+        else:
+            key = path[0]
+            new_child = self._get(key).insert_child(path[1:], tree)
+            return self._insert_child(key, new_child)
+
+    def remove_child(self, path: ChildPath) -> "IterationTree":
+        """
+        Remove a node in a tree. It is equivalent to `insert_child(path, None)`.
+        """
+        return self.insert_child(path, None)
+
+    def insert_transform(
+        self, path: ChildPath, Parent: type["Transform"], *args, **kwargs
+    ) -> "IterationTree":
+        """
+        Insert a parent to the node at the given path, parent which is
+        necessarily a transform node, as it will only have a single child. The
+        parent is built using the `Parent` class, and the supplied arguments.
+
+        The newly created tree is returned.
+        """
+        if not issubclass(Parent, Transform):
+            raise TypeError("Cannot insert a non-transform node as a parent.")
+
+        if len(path) == 0:
+            return Parent(self, *args, **kwargs)
+
+        key = path[0]
+        new_child = self._get(key).insert_transform(path[1:], Parent, *args, **kwargs)
+        new_me = self._insert_child(key, new_child)
+
+        return new_me
+
+    def replace_node(
+        self, path: ChildPath, Node: type["IterationTree"], *args, **kwargs
+    ) -> "IterationTree":
+        """
+        Replace the node at the given path with another one. The other node is
+        built using its type, `Node`, and the `args` and `kwargs` arguments.
+        Note that the sub-tree of the replaced node is not modified.
+
+        This requires `Node` to be of the same kind of the node that is being
+        replaced: a transform for a transform, an iteration method for an
+        iteration method, a leaf for a leaf.
+        """
+        if len(path) == 0:
+            return self._replace_root(Node, *args, **kwargs)
+        else:
+            key = path[0]
+            new_child = self._get(key).replace_node(path[1:], Node, *args, **kwargs)
+            new_me = self._insert_child(key, new_child)
+
+            return new_me
 
 
 class _NoDefault:
@@ -199,6 +349,41 @@ class IterationMethod(IterationTree):
         else:  # isinstance(self.children, dict)
             return {key: value.default() for key, value in self.children.items()}
 
+    # Path API
+
+    # Note: self.children[child_key] is not properly typed. Indeed, child_key
+    # can be a dict or a list key, and there is no guarantee that self.children
+    # is of the corresponding type. However, if the key does not exist, a
+    # `KeyError` will be raised, which is the expected behavior. For those
+    # reasons, it is valid to ignore[index] all the self.children
+    # [child_key] expressions.
+
+    def _get(self, child_key: Key | _Child) -> IterationTree:
+        if isinstance(child_key, _Child):
+            raise KeyError("Iteration method does not support Child() index.")
+
+        return self.children[child_key]  # type: ignore[index]
+
+    def _insert_child(
+        self, child_key: Key | _Child, child: IterationTree
+    ) -> IterationTree:
+        if isinstance(child_key, _Child):
+            raise KeyError("Iteration method does not support Child() index.")
+
+        self.children[child_key] = child  # type: ignore[index]
+        return self
+
+    def _remove_child(self, child_key: Key | _Child) -> IterationTree:
+        _ = self.children.pop(child_key)  # type: ignore[arg-type]
+        return self
+
+    def _replace_root(
+        self, Node: type[IterationTree], *args, **kwargs
+    ) -> IterationTree:
+        if not issubclass(Node, IterationMethod):
+            raise TypeError(f"Cannot replace an iteration method with a {Node}")
+
+        return Node(self.children, *args, **kwargs)
 
 @dataclass(frozen=True)
 class CartesianProduct(IterationMethod):
@@ -351,6 +536,31 @@ class Transform(IterationTree):
     def default(self) -> DataTree:
         return self.transform(self.child.default())
 
+    # Path API
+
+    def _get(self, child_key: Key | _Child) -> IterationTree:
+        if not isinstance(child_key, _Child):
+            raise KeyError("Transform node child is only accessible with Child().")
+
+        return self.child
+
+    def _insert_child(
+        self, child_key: Key | _Child, child: IterationTree
+    ) -> IterationTree:
+        if not isinstance(child_key, _Child):
+            raise KeyError("Transform node child is only accessible with Child().")
+
+        return dataclasses.replace(self, child=child)
+
+    def _remove_child(self, child_key: Key | _Child) -> IterationTree:
+        raise TypeError("Transform node does not support child removal.")
+
+    def _replace_root(
+        self, Node: type[IterationTree], *args, **kwargs
+    ) -> IterationTree:
+        # The signature of `Node` is statically unknown
+        return Node(self.child, *args, **kwargs)  # type: ignore[call-arg]
+
 
 @dataclass(frozen=True)
 class FunctionalTranform(Transform):
@@ -367,11 +577,32 @@ class FunctionalTranform(Transform):
 ### Leaves ###
 
 
+class IterationLeaf(IterationTree):
+    def _get(self, child_key: Key | _Child) -> IterationTree:
+        raise TypeError("Iteration leaves do not support indexing.")
+
+    def _insert_child(
+        self, child_key: Key | _Child, child: IterationTree
+    ) -> IterationTree:
+        raise TypeError("Iteration leaves do not support indexing.")
+
+    def _remove_child(self, child_key: Key | _Child) -> IterationTree:
+        raise TypeError("Iteration leaves do not support indexing.")
+
+    def _replace_root(
+        self, Node: type[IterationTree], *args, **kwargs
+    ) -> IterationTree:
+        if not issubclass(Node, IterationLeaf):
+            raise TypeError(f"Cannot replace an iteration leaf with a {Node}")
+
+        return Node(*args, **kwargs)
+
+
 DT = TypeVar("DT", bound=DataTree)
 
 
 @dataclass(frozen=True)
-class IterationLiteral(IterationTree, Generic[DT]):
+class IterationLiteral(IterationLeaf, Generic[DT]):
     """
     Wrapper around a data tree.
     """
@@ -395,7 +626,7 @@ T = TypeVar("T", bound=int | float)
 
 
 @dataclass(frozen=True)
-class NumericRange(IterationTree, Generic[T]):
+class NumericRange(IterationLeaf, Generic[T]):
     """
     Represents a range of numeric values.
     """
@@ -503,7 +734,7 @@ class IntegerRange(NumericRange[int]):
 
 
 @dataclass(frozen=True)
-class Sequence(IterationTree):
+class Sequence(IterationLeaf):
     """
     Non-empty sequence of data trees.
     """
