@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from functools import reduce
 from math import exp, log
 from typing import Callable, Generic, Iterator, TypeVar
+import typing
 
 #################
 ### Data tree ###
@@ -32,6 +33,22 @@ Key = DataLiteral
 
 #: A data tree consists of literal leaves, and dictionary or list nodes
 DataTree = DataLiteral | dict[Key, "DataTree"] | list["DataTree"]
+
+########################
+### Pseudo data tree ###
+########################
+
+# Note: a DataTree is a PseudoDataTree, but mypy seems not to understand it.
+
+#: A leave of a pseudo data tree is either a data tree leave, or a non-trivial
+#: iteration tree leave.
+PseudoDataLiteral = typing.Union[DataLiteral, "NumericRange", "Sequence"]
+
+#: A pseudo data tree is a data tree whose leaves can be non literal iteration
+#: leaves.
+PseudoDataTree = (
+    PseudoDataLiteral | dict[Key, "PseudoDataTree"] | list["PseudoDataTree"]
+)
 
 ######################
 ### Iteration tree ###
@@ -61,6 +78,11 @@ class IterationTree(ABC):
         return self.__iter__()
 
     @abstractmethod
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        """
+        Converts the iteration tree to a pseudo data tree.
+        """
+        raise NotImplementedError()
     def default(self) -> DataTree:
         """
         Returns a default data tree.
@@ -153,6 +175,14 @@ class IterationMethod(IterationTree):
 
         if self.lazy and not isinstance(self.children, dict):
             raise TypeError("Lazy iteration is only supported for dictionary children")
+
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        if isinstance(self.children, list):
+            return [child.to_pseudo_data_tree() for child in self.children]
+        else:  # isinstance(self.children, dict)
+            return {
+                key: value.to_pseudo_data_tree() for key, value in self.children.items()
+            }
 
     def default(self) -> DataTree:
         if isinstance(self.children, IterationTree):
@@ -308,6 +338,9 @@ class Transform(IterationTree):
     def __len__(self) -> int:
         return len(self.child)
 
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        return self.child.to_pseudo_data_tree()
+
     def default(self) -> DataTree:
         return self.transform(self.child.default())
 
@@ -344,6 +377,9 @@ class IterationLiteral(IterationTree, Generic[DT]):
     def __len__(self) -> int:
         return 1
 
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        return self.value  # type: ignore[return-value]
+
     def default(self) -> DT:
         return self.value
 
@@ -364,6 +400,9 @@ class NumericRange(IterationTree, Generic[T]):
     def __iter__(self) -> Iterator[T]:
         raise TypeError("Cannot iterate over a numeric range.")
 
+
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        return self
     def default(self) -> T:
         if isinstance(self.default_value, _NoDefault):
             raise ValueError("This range does not have a default value.")
@@ -471,6 +510,9 @@ class Sequence(IterationTree):
 
     def __len__(self) -> int:
         return len(self.elements)
+
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        return self
 
     def default(self) -> DataTree:
         if isinstance(self.default_value, _NoDefault):
