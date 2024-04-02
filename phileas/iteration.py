@@ -14,14 +14,13 @@ iterate over multiple data sources. Then, `Transform` nodes can be inserted in
 those trees in order to modify the data trees generated while iterating.
 """
 
+import dataclasses
+import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import dataclasses
-
 from functools import reduce
 from math import exp, log
 from typing import Callable, Generic, Iterator, TypeVar
-import typing
 
 #################
 ### Data tree ###
@@ -115,6 +114,14 @@ class IterationTree(ABC):
         """
         Returns a default data tree. If the node does not have a default value,
         it should raise a `TypeError`.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def __getitem__(self, key: Key) -> "IterationTree":
+        """
+        It is implemented to allow working with an iteration tree as if it
+        consisted of nested list and dict objects.
         """
         raise NotImplementedError()
 
@@ -343,12 +350,13 @@ class IterationMethod(IterationTree):
             }
 
     def default(self) -> DataTree:
-        if isinstance(self.children, IterationTree):
-            return self.children.default()
-        elif isinstance(self.children, list):
+        if isinstance(self.children, list):
             return [child.default() for child in self.children]
         else:  # isinstance(self.children, dict)
             return {key: value.default() for key, value in self.children.items()}
+
+    def __getitem__(self, Key) -> IterationTree:
+        return self.children[Key]
 
     # Path API
 
@@ -538,6 +546,9 @@ class Transform(IterationTree):
     def default(self) -> DataTree:
         return self.transform(self.child.default())
 
+    def __getitem__(self, key: Key) -> IterationTree:
+        return self.child[key]
+
     # Path API
 
     def _get(self, child_key: Key | _Child) -> IterationTree:
@@ -623,6 +634,17 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
     def default(self) -> DT:
         return self.value
 
+    def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]
+        """
+        Work as if the iteration literal was the literal it contains.
+
+        It does not respect the API of `IterationTree.__getitem__`, as it
+        returns a `DataTree`, but this is so convenient that we accept this
+        compromise.
+        """
+        # A `KeyError` is raised in case of an improper index.
+        return self.value[key]  # type: ignore[index]
+
 
 T = TypeVar("T", bound=int | float)
 
@@ -650,6 +672,9 @@ class NumericRange(IterationLeaf, Generic[T]):
         if isinstance(self.default_value, _NoDefault):
             raise TypeError("This range does not have a default value.")
         return self.default_value
+
+    def __getitem__(self, key: Key) -> IterationTree:
+        raise TypeError("Numeric ranges do not support indexing.")
 
 
 @dataclass(frozen=True)
@@ -761,3 +786,13 @@ class Sequence(IterationLeaf):
         if isinstance(self.default_value, _NoDefault):
             raise TypeError("This sequence does not have a default value")
         return self.elements[0]
+
+    def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]
+        """
+        Work as if the iteration sequence was the sequence it contains.
+
+        It does not respect the API of `IterationTree.__getitem__`, as it
+        returns a `DataTree`, but this is so convenient that we accept this
+        compromise.
+        """
+        return self.elements[key]  # type: ignore[index]

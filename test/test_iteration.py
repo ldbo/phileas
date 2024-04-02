@@ -178,7 +178,7 @@ class TestIteration(unittest.TestCase):
             formatted_list = "\n".join(f" - {s}" for s in tree)
             hypothesis.note(f"The iterated list is \n{formatted_list}")
             self.assertEqual(n, len(list(tree)))
-        except ValueError:
+        except TypeError:
             return
 
     @given(st.lists(linear_range(), min_size=1, max_size=5))
