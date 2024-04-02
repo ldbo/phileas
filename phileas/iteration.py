@@ -109,9 +109,12 @@ class IterationTree(ABC):
         Converts the iteration tree to a pseudo data tree.
         """
         raise NotImplementedError()
+
+    @abstractmethod
     def default(self) -> DataTree:
         """
-        Returns a default data tree.
+        Returns a default data tree. If the node does not have a default value,
+        it should raise a `TypeError`.
         """
         raise NotImplementedError()
 
@@ -255,8 +258,6 @@ class _NoDefault:
     Utility sentinel class used to store a default value which is not set.
     """
 
-    pass
-
     def __repr__(self) -> str:
         return "NoDefault()"
 
@@ -385,6 +386,7 @@ class IterationMethod(IterationTree):
 
         return Node(self.children, *args, **kwargs)
 
+
 @dataclass(frozen=True)
 class CartesianProduct(IterationMethod):
     """
@@ -469,7 +471,7 @@ class Union(IterationMethod):
             for key, tree in self.children.items():
                 try:
                     base[key] = tree.default()
-                except ValueError:
+                except TypeError:
                     pass
 
             return base
@@ -646,7 +648,7 @@ class NumericRange(IterationLeaf, Generic[T]):
 
     def default(self) -> T:
         if isinstance(self.default_value, _NoDefault):
-            raise ValueError("This range does not have a default value.")
+            raise TypeError("This range does not have a default value.")
         return self.default_value
 
 
