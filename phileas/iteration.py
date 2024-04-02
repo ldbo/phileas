@@ -70,6 +70,15 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def __len__(self) -> int:
+        """
+        Return the number of data trees represented by the iteration tree. If it
+        is finite, it should be the same as the number of elements yielded by
+        `__iter__`. Otherwise, a `TypeError` is raised.
+        """
+        raise NotImplementedError()
+
     def iterate(self) -> Iterator[DataTree]:
         """
         Other name of `__iter__`, which can be more explicit in for example
@@ -89,8 +98,6 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
-    def __len__(self) -> int:
-        raise ValueError("This tree does not have a length.")
 
 
 class _NoDefault:
@@ -400,9 +407,12 @@ class NumericRange(IterationTree, Generic[T]):
     def __iter__(self) -> Iterator[T]:
         raise TypeError("Cannot iterate over a numeric range.")
 
+    def __len__(self) -> int:
+        raise TypeError("A numeric range does not have a length.")
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
+
     def default(self) -> T:
         if isinstance(self.default_value, _NoDefault):
             raise ValueError("This range does not have a default value.")
