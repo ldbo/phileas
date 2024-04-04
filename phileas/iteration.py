@@ -22,6 +22,8 @@ from functools import reduce
 from math import exp, log
 from typing import Callable, Generic, Iterator, TypeVar
 
+from .utility import Sentinel
+
 #################
 ### Data tree ###
 #################
@@ -56,14 +58,12 @@ PseudoDataTree = (
 ######################
 
 
-class _Child:
+class _Child(Sentinel):
     """
-    Utility sentinel class used to represent the index of the only child of a
-    1-ary iteration node.
+    Sentinel representing the index of the only child of a 1-ary iteration node.
     """
 
-    def __repr__(self) -> str:
-        return "Child()"
+    pass
 
 
 child = _Child()
@@ -260,13 +260,12 @@ class IterationTree(ABC):
             return new_me
 
 
-class _NoDefault:
+class _NoDefault(Sentinel):
     """
-    Utility sentinel class used to store a default value which is not set.
+    Sentinel representing a default value which is not set.
     """
 
-    def __repr__(self) -> str:
-        return "NoDefault()"
+    pass
 
 
 #: You can store this value - instead of an actual default value - in instances
@@ -657,7 +656,7 @@ class NumericRange(IterationLeaf, Generic[T]):
 
     start: T
     end: T
-    default_value: T | _NoDefault = field(default=no_default)
+    default_value: T | _NoDefault = field(default_factory=_NoDefault)
 
     def __iter__(self) -> Iterator[T]:
         raise TypeError("Cannot iterate over a numeric range.")
@@ -767,7 +766,7 @@ class Sequence(IterationLeaf):
     """
 
     elements: list[DataTree]
-    default_value: DataTree | _NoDefault = field(default=no_default)
+    default_value: DataTree | _NoDefault = field(default_factory=_NoDefault)
 
     def __post_init__(self):
         if len(self.elements) == 0:
