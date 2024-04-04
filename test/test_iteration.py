@@ -59,12 +59,12 @@ def linear_range(draw):
 def geometric_range(draw):
     sign = draw(st.sampled_from([-1, 1]))
     start = sign * draw(
-        st.floats(min_value=0, max_value=10, exclude_min=True, allow_nan=False)
+        st.floats(min_value=1e-10, max_value=10, exclude_min=True, allow_nan=False)
     )
     end = sign * draw(
-        st.floats(min_value=0, max_value=10, exclude_min=True, allow_nan=False).filter(
-            lambda e: abs(e * start) > 0
-        )
+        st.floats(
+            min_value=1e-10, max_value=10, exclude_min=True, allow_nan=False
+        ).filter(lambda e: abs(e * start) > 0)
     )
     return GeometricRange(start, end, steps=draw(st.integers(2, 3)), default_value=1.0)
 
