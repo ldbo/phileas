@@ -18,6 +18,7 @@ import dataclasses
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from functools import reduce
 from math import exp, log
 from typing import Callable, Generic, Iterator, TypeVar
@@ -29,10 +30,10 @@ from .utility import Sentinel
 #################
 
 #: Data values that can be used
-DataLiteral = None | bool | str | int | float
+DataLiteral = typing.Union[None, bool, str, int, float, "_NoDefault"]
 
 #: Dictionary keys
-Key = DataLiteral
+Key = None | bool | str | int | float
 
 #: A data tree consists of literal leaves, and dictionary or list nodes
 DataTree = DataLiteral | dict[Key, "DataTree"] | list["DataTree"]
@@ -69,6 +70,60 @@ class _Child(Sentinel):
 child = _Child()
 
 ChildPath = list[Key | _Child]
+
+
+class NoDefaultPolicy(Enum):
+    """
+    Behavior of `default` for trees not having a default value.
+    """
+
+    #: Raise a `NoDefaultError` if any of the nodes in the tree does not have a
+    #: default value.
+    ERROR = "ERROR"
+
+    #: Return the `_NoDefault` sentinel if any of the nodes in the tree does not
+    #: have a default value.
+    SENTINEL = "SENTINEL"
+
+    #: Skip elements without a default element. If the root of the tree does
+    #: not have a default value, return a `_NoDefault` sentinel.
+    #:
+    #: Note that this is not supported by iteration method nodes with list
+    #: children.
+    SKIP = "SKIP"
+
+
+class NoDefaultError(Exception):
+    """
+    Indicates that `default()` has been called on an iteration tree where a node
+    does not have a default value.
+    """
+
+    #: Path of a child without a default value.
+    path: ChildPath
+
+    def __init__(self, message: str, path: ChildPath) -> None:
+        super().__init__(message)
+        self.path = path
+
+    def __str__(self):
+        path_msg = (
+            f" (path {'/'.join(map(str, self.path))})" if len(self.path) > 0 else ""
+        )
+        return f"{super().__str__()}{path_msg}"
+
+
+class _NoDefault(Sentinel):
+    """
+    Sentinel representing a default value which is not set.
+    """
+
+    pass
+
+
+#: You can store this value - instead of an actual default value - in instances
+#: of classes that can have a default value, but don't.
+no_default = _NoDefault()
 
 
 class IterationTree(ABC):
@@ -110,10 +165,12 @@ class IterationTree(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def default(self) -> DataTree:
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
         """
-        Returns a default data tree. If the node does not have a default value,
-        it should raise a `TypeError`.
+        Returns a default data tree. If the tree does not have a default value,
+        follows the behavior dictated by `no_default_policy`.
         """
         raise NotImplementedError()
 
@@ -260,19 +317,6 @@ class IterationTree(ABC):
             return new_me
 
 
-class _NoDefault(Sentinel):
-    """
-    Sentinel representing a default value which is not set.
-    """
-
-    pass
-
-
-#: You can store this value - instead of an actual default value - in instances
-#: of classes that can have a default value, but don't.
-no_default = _NoDefault()
-
-
 ### Nodes ###
 
 
@@ -348,11 +392,50 @@ class IterationMethod(IterationTree):
                 key: value.to_pseudo_data_tree() for key, value in self.children.items()
             }
 
-    def default(self) -> DataTree:
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
+        # List children
         if isinstance(self.children, list):
-            return [child.default() for child in self.children]
-        else:  # isinstance(self.children, dict)
-            return {key: value.default() for key, value in self.children.items()}
+            if no_default_policy == NoDefaultPolicy.SKIP:
+                msg = "NoDefaultPolicy.SKIP is not supported by iteration "
+                msg += "methods with list children."
+                raise TypeError(msg)
+
+            default_list: list[DataTree | _NoDefault] = [None] * len(self.children)
+            for position, child in enumerate(self.children):
+                error: None | NoDefaultError = None
+                try:
+                    default_list[position] = child.default(no_default_policy)
+                except NoDefaultError as err:
+                    error = NoDefaultError(err.args[0], [position] + err.path)
+
+                if error is not None:
+                    raise error
+
+            return default_list
+
+        # Dict children
+        default_dict: dict[Key, DataTree] = {}
+        for key, child in self.children.items():
+            error = None
+            try:
+                default_dict[key] = child.default(no_default_policy)
+            except NoDefaultError as err:
+                own_path: ChildPath = [key]
+                error = NoDefaultError(err.args[0], own_path + err.path)
+
+            if error is not None:
+                raise error
+
+        if no_default_policy == NoDefaultPolicy.SKIP:
+            return {
+                key: child
+                for key, child in default_dict.items()
+                if not child == no_default
+            }
+        else:
+            return default_dict
 
     def __getitem__(self, Key) -> IterationTree:
         return self.children[Key]
@@ -468,22 +551,7 @@ class Union(IterationMethod):
     not implementing a default value.
     """
 
-    def __base_value(self) -> list[DataTree] | dict[Key, DataTree]:
-        """
-        Method used instead of `default`, implementing a best-effort default
-        value if the children are specified as a dictionary.
-        """
-        if isinstance(self.children, dict):
-            base = {}
-            for key, tree in self.children.items():
-                try:
-                    base[key] = tree.default()
-                except TypeError:
-                    pass
-
-            return base
-        else:
-            return self.default()  # type: ignore[return-value]
+    no_default_policy = NoDefaultPolicy.SKIP
 
     def __iter__(self) -> Iterator[DataTree]:
         """
@@ -492,7 +560,8 @@ class Union(IterationMethod):
         Implements lazy iteration.
         """
         iterators = [iter(tree) for tree in self._iterated_trees]
-        base = self.__base_value()
+        base = self.default(no_default_policy=self.no_default_policy)
+        assert isinstance(base, (dict, list))
         current = base.copy()
 
         for index, iterator in enumerate(iterators):
@@ -542,8 +611,23 @@ class Transform(IterationTree):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self.child.to_pseudo_data_tree()
 
-    def default(self) -> DataTree:
-        return self.transform(self.child.default())
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
+        error: None | NoDefaultError = None
+        try:
+            child_default = self.child.default(no_default_policy)
+        except NoDefaultError as err:
+            own_path: ChildPath = [child]
+            error = NoDefaultError(err.args[0], own_path + err.path)
+
+        if error is not None:
+            raise error
+
+        if isinstance(child_default, _NoDefault):
+            return no_default
+
+        return self.transform(child_default)
 
     def __getitem__(self, key: Key) -> IterationTree:
         return self.child[key]
@@ -630,7 +714,9 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self.value  # type: ignore[return-value]
 
-    def default(self) -> DT:
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
         return self.value
 
     def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]
@@ -667,9 +753,17 @@ class NumericRange(IterationLeaf, Generic[T]):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
 
-    def default(self) -> T:
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
         if isinstance(self.default_value, _NoDefault):
-            raise TypeError("This range does not have a default value.")
+            if no_default_policy == NoDefaultPolicy.ERROR:
+                raise NoDefaultError("Numeric range without a default value", [])
+            elif no_default_policy == NoDefaultPolicy.SENTINEL:
+                return no_default
+            else:  # no_default_policy == NoDefaultPolicy.SKIP:
+                return no_default
+
         return self.default_value
 
     def __getitem__(self, key: Key) -> IterationTree:
@@ -781,9 +875,17 @@ class Sequence(IterationLeaf):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
 
-    def default(self) -> DataTree:
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
         if isinstance(self.default_value, _NoDefault):
-            raise TypeError("This sequence does not have a default value")
+            if no_default_policy == NoDefaultPolicy.ERROR:
+                raise NoDefaultError("Sequence without a default value", [])
+            elif no_default_policy == NoDefaultPolicy.SENTINEL:
+                return no_default
+            else:  # no_default_policy == NoDefaultPolicy.SKIP:
+                return no_default
+
         return self.elements[0]
 
     def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]

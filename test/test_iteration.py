@@ -5,6 +5,7 @@ import hypothesis
 from hypothesis import given
 from hypothesis import strategies as st
 
+from phileas import iteration
 from phileas.iteration import (
     CartesianProduct,
     DataTree,
@@ -14,6 +15,7 @@ from phileas.iteration import (
     IterationLiteral,
     IterationTree,
     LinearRange,
+    NoDefaultPolicy,
     NumericRange,
     Sequence,
     Transform,
@@ -273,3 +275,19 @@ class TestIteration(unittest.TestCase):
         t = FunctionalTranform(IntegerRange(0, 2), add1)
         t_result = list(t)
         self.assertEqual(t_result, [1, 2, 3])
+
+    def test_no_default_policy_skip(self):
+        t = CartesianProduct({"a": LinearRange(1, 2)})
+        self.assertEqual(t.default(no_default_policy=NoDefaultPolicy.SKIP), {})
+
+    def test_no_default_policy_sentinel(self):
+        t = CartesianProduct({"a": LinearRange(1, 2)})
+        self.assertEqual(
+            t.default(no_default_policy=NoDefaultPolicy.SENTINEL),
+            {"a": iteration.no_default},
+        )
+
+    def test_no_default_policy_error(self):
+        t = CartesianProduct({"a": LinearRange(1, 2)})
+        with self.assertRaises(iteration.NoDefaultError):
+            t.default(no_default_policy=NoDefaultPolicy.ERROR)
