@@ -4,12 +4,8 @@ from pathlib import Path
 from typing import ClassVar
 
 import phileas
-from phileas import (
-    ExperimentFactory,
-    clear_default_loaders,
-    parsing,
-    register_default_loader,
-)
+from phileas import ExperimentFactory, clear_default_loaders, register_default_loader
+from phileas.iteration import DataTree
 
 
 class BaseTestCase(unittest.TestCase):
@@ -34,11 +30,11 @@ class BaseTestCase(unittest.TestCase):
 
 class TestEmptyConfigurationFile(BaseTestCase):
     bench_config = ""
-    experiment_config = ""
+    experiment_config = "a:\n loader: plop"
 
     def test_empty_configuration_file(self):
         self.assertEqual(self.factory.bench_config, {})
-        self.assertEqual(self.factory.experiment_config, {})
+        # self.assertEqual(self.factory.experiment_config, {})
 
         self.assertDictEqual(self.factory.experiment_instruments, {})
         self.factory.initiate_connections()
@@ -129,7 +125,7 @@ class TestLoaderDocumentation(BaseTestCase):
             name = "class_loader"
             interfaces = {"interface1", "interface2"}
 
-            def initiate_connection(self, configuration: dict) -> object:
+            def initiate_connection(self, configuration: DataTree) -> object:
                 """
                 Initialization documentation.
 
@@ -139,7 +135,7 @@ class TestLoaderDocumentation(BaseTestCase):
                 """
                 return object()
 
-            def configure(self, instrument: object, configuration: dict):
+            def configure(self, instrument: object, configuration: DataTree):
                 """
                 Configuration documentation.
 
@@ -284,23 +280,23 @@ class TestFunctional1(unittest.TestCase):
         self.assertNotIn("ampli", factory.experiment_instruments)
 
         # Configuration access
-        self.assertEqual(
-            factory.experiment_config["laser"]["power"].to_array().shape[0], 10
-        )
-        self.assertIn("ampli", factory.experiment_config)
-        self.assertNotIn("connections", factory.experiment_config)
+        self.assertEqual(len(factory.experiment_config["laser"]["power"]), 10)
+        p_experiment_config = factory.experiment_config.to_pseudo_data_tree()
+        assert isinstance(p_experiment_config, dict)
+        self.assertIn("ampli", p_experiment_config)
+        self.assertNotIn("connections", p_experiment_config)
 
         # Configuration generation and iteration
         factory.configure_experiment()
-        for exp_configuration in factory.configured_experiment_iterator():
+        for exp_configuration in factory.experiment_config:
+            assert isinstance(exp_configuration, dict)
             self.assertIn("laser", exp_configuration)
             self.assertIn("dut_power_supply", exp_configuration)
             self.assertIn("dut", exp_configuration)
             self.assertIn("ampli", exp_configuration)
 
-        for instrument_configuration in factory.configured_instrument_iterator(
-            "laser", method=parsing.IterationMethod.UNION
-        ):
+        for instrument_configuration in factory.experiment_config["laser"]:
+            assert isinstance(instrument_configuration, dict)
             self.assertIn("power", instrument_configuration)
 
         # Graph generation

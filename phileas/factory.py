@@ -6,11 +6,15 @@ from dataclasses import dataclass
 from functools import reduce
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Generator, cast
+from types import NoneType
+from typing import Any, Callable, ClassVar, cast
 
-import graphviz  # type: ignore[import-untyped]
+import graphviz  # type: ignore[import]
 
 from . import parsing
+from .iteration import DataTree, IterationTree, Key
+
+### Loaders ###
 
 
 class Loader(ABC):
@@ -124,8 +128,8 @@ def _add_loader(
         | tuple[
             str,
             set[str],
-            Callable[[dict], Any],
-            Callable[[Any, dict], None],
+            Callable[[DataTree], Any],
+            Callable[[Any, DataTree], None],
         ]
     ),
 ):
@@ -144,7 +148,12 @@ def _add_loader(
         # could lead to issues if the user were to define a loader inheriting
         # from tuple.
         loader = cast(
-            tuple[str, set[str], Callable[[dict], Any], Callable[[Any, dict], None]],
+            tuple[
+                str,
+                set[str],
+                Callable[[DataTree], Any],
+                Callable[[Any, DataTree], None],
+            ],
             loader,
         )
         loader = build_loader(*loader)
@@ -181,7 +190,9 @@ def register_default_loader(
         interfaces = loader.interfaces
     else:
         loader = cast(
-            tuple[str, set[str], Callable[[dict], Any], Callable[[Any, dict], Any]],
+            tuple[
+                str, set[str], Callable[[DataTree], Any], Callable[[Any, DataTree], Any]
+            ],
             loader,
         )
         name = loader[0]
@@ -198,6 +209,9 @@ def clear_default_loaders():
     _DEFAULT_LOADERS.clear()
 
 
+### Instrument structures ###
+
+
 @dataclass
 class BenchInstrument:
     name: str
@@ -208,7 +222,7 @@ class BenchInstrument:
 
     #: Bench configuration of the instrument, stripped of the reserved keywords
     #: entries
-    configuration: dict[str, Any]
+    configuration: dict[Key, DataTree]
 
     #: None before initialization
     instrument: Any | None = None
@@ -226,6 +240,9 @@ class ExperimentInstrument:
     #: Experiment configuration of the instrument, stripped of the reserved
     #: keywords entries
     configuration: dict[str, Any]
+
+
+### Filters ###
 
 
 class Filter(ABC):
@@ -319,171 +336,99 @@ class Connection:
 
 class ExperimentFactory:
     """
-    Class used to parse configuration files and create the experiment
-    environment they describe, making the instruments available.
+    The experiment factory is used to
+     - parse configuration files, cleaning them of reserved keywords;
+     - match the experiment instruments to their bench instruments and loaders;
+     - initiate the connection to the instruments, and configure them.
     """
 
-    bench_file: Path | str
-    experiment_file: Path | str
+    bench_file: Path | None
+    experiment_file: Path | None
 
-    #: Parsed content of the bench configuration file, which is stripped of the
-    #: reserved keyword entries
-    bench_config: dict[str, Any]
+    #: Bench configuration stripped of the reserved keyword entries.
+    bench_config: dict[str, DataTree]
 
-    #: Content of the experiment configuration file, which is stripped of the
-    #: reserved keyword entries
-    experiment_config: dict[str, Any]
+    #: Experiment configuration stripped of the reserved keyword entries.
+    experiment_config: IterationTree
 
     #: Instruments whose connection has been initiated, configured or not.
     experiment_instruments: dict[str, Any]
 
-    #: The supported loader classes, stored with their name
+    #: The supported loader classes, stored with their name.
     loaders: dict[str, type[Loader]]
 
-    #: Bench instruments, created by __preinit_bench_instruments
+    #: Bench instruments, created by __preinit_bench_instruments.
     __bench_instruments: dict[str, BenchInstrument]
-    #: Experiment instrument, created by __preconfigure_experiment_instruments
+    #: Experiment instrument, created by __preconfigure_experiment_instruments.
     __experiment_instruments: dict[str, ExperimentInstrument]
-    #: Experiment connections, created by __build_connection_graph
+    #: Experiment connections, created by __build_connection_graph.
     __connections: list[Connection]
 
-    def __init__(self, bench_file: Path | str, experiment_file: Path | str):
+    ### Instruments initialization ###
+
+    def __init__(
+        self,
+        bench: Path | str | dict[str, DataTree],
+        experiment: Path | str | IterationTree,
+    ):
         """
-        Create an experiment factory, parsing the configuration files, so that
-        the instruments just need to initiate their connection to be used.
+        Parse the configuration files (given either by their file path, raw
+        content or parsed content), clean them and prepare the instruments.
         """
+        # Loaders
         self.loaders = {}
         self.loaders.update(_DEFAULT_LOADERS)
 
-        self.bench_file = bench_file
-        self.bench_config = parsing.load_yaml_dict_from_file(bench_file)
+        # Bench configuration handling
+        bench_config: DataTree
+        if isinstance(bench, Path):
+            self.bench_file = bench
+            bench_config = parsing.load_data_tree_from_yaml_file(bench)
+            logging.info(f"Bench configuration loaded from {bench}.")
+        else:
+            logging.info("Bench configuration supplied as a data tree.")
+            self.bench_file = None
+            if isinstance(bench, str):
+                bench_config = parsing.load_data_tree_from_yaml_file(bench)
+            else:
+                bench_config = bench  # type: ignore[assignment]
+
+        if bench_config in (None, ""):
+            bench_config = {}
+        elif not isinstance(bench_config, dict):
+            raise ValueError("The bench configuration must be a dictionary.")
+
+        if any(not isinstance(key, str) for key in bench_config.keys()):
+            raise ValueError("The bench configuration must only have string keys.")
+
+        self.bench_config = bench_config  # type: ignore[assignment]
         self.__preinit_bench_instruments()
-
-        self.experiment_file = experiment_file
-        exp = parsing.load_yaml_dict_from_file(experiment_file)
-        self.experiment_config = exp
         self.experiment_instruments = {}
-        self.__preconfigure_experiment_instruments()
 
-        self.__build_connection_graph()
+        # Experiment configuration handling
+        if isinstance(experiment, Path):
+            self.experiment_file = experiment
+            experiment_config = parsing.load_iteration_tree_from_yaml_file(experiment)
+            logging.info(f"Experiment configuration loaded from {experiment}.")
+        else:
+            self.experiment_file = None
+            if isinstance(experiment, str):
+                experiment_config = parsing.load_iteration_tree_from_yaml_file(
+                    experiment
+                )
+            else:
+                experiment_config = experiment
+            logging.info("Experiment configuration supplied as an iteration tree.")
 
-    def initiate_connections(self):
-        """
-        Lazily initiate the connections of all the bench instruments, *ie.* only
-        those that are matched to an experiment instrument are handled.
-        """
-        for experiment_instrument in self.__experiment_instruments.values():
-            be = experiment_instrument.bench_instrument
-            be.initiate_connection()
-            name = experiment_instrument.name
-            self.experiment_instruments[name] = be.instrument
+        p_experiment_config = experiment_config.to_pseudo_data_tree()
 
-    def get_bench_instrument(self, name: str) -> Any:
-        """
-        Return the bench instrument whose name is specified, after having
-        initiated its connection if required. This is the only way a bench
-        instrument should be retrieved.
-        """
-        be = self.__bench_instruments[name]
-        if be.instrument is None:
-            be.initiate_connection()
+        if not isinstance(p_experiment_config, (dict, NoneType)):
+            msg = "The experiment configuration must be a empty, or a top-level dictionary"
+            raise ValueError(msg)
 
-            for ei_name, ei_inst in self.__experiment_instruments.items():
-                bi = ei_inst.bench_instrument
-                if bi.name == name:
-                    self.experiment_instruments[ei_name] = bi.instrument
-
-        return be.instrument
-
-    def configure_instrument(self, name: str, configuration: dict | None = None):
-        """
-        Configure an experiment instrument using the given configuration, and
-        the `configure` method of its loader. If no configuration is given,
-        use the instrument default literal configuration from the experiment configuration.
-
-        Note that the default configuration uses None values for iterables
-        without a default value.
-        """
-        if configuration is None:
-            configuration = parsing.default_configuration(self.experiment_config[name])
-
-        experiment_instrument = self.__experiment_instruments[name]
-        instrument = experiment_instrument.bench_instrument.instrument
-        loader = experiment_instrument.bench_instrument.loader
-        loader.configure(instrument, configuration)
-
-    def configure_experiment(self, configuration: dict | None = None):
-        """
-        Configure all the instruments of an experiment using the `configure`
-        method of their respective loaders and the entry of configuration
-        matching their name. If no configuration is given, use the experiment
-        default literal configuration from the experiment configuration.
-
-        Note that the default configuration uses None values for iterables
-        without a default value.
-        """
-        if configuration is None:
-            configuration = parsing.default_configuration(self.experiment_config)
-
-        for name in self.__experiment_instruments:
-            self.configure_instrument(name, configuration[name])
-
-    def experiment_configurations_iterator(
-        self, method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT
-    ) -> Generator[dict[str, Any], None, None]:
-        """
-        Creates a generator yielding the successive literal configurations
-        represented by the experiment configuration file. See
-        `parsing.configurations_iterator` for more details.
-        """
-        return parsing.configurations_iterator(self.experiment_config, method=method)
-
-    def instrument_configurations_iterator(
-        self,
-        instrument: str,
-        method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT,
-    ) -> Generator[dict[str, Any], None, None]:
-        """
-        Creates a generator yielding the successive literal configurations
-        represented by an instrument entry of the experiment configuration
-        file. See `parsing.configurations_iterator` for more details.
-        """
-        return parsing.configurations_iterator(
-            self.experiment_config[instrument], method=method
-        )
-
-    def configured_experiment_iterator(
-        self, method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT
-    ) -> Generator[dict[str, Any], None, None]:
-        """
-        Creates a generator which configures the experiment according to the
-        successive literal configurations represented by the experiment
-        configuration file, and yields the dictionary of the configurations at
-        each step.
-
-        See `parsing.configurations_iterator` for more details.
-        """
-        for config in self.experiment_configurations_iterator(method=method):
-            self.configure_experiment(config)
-            yield config
-
-    def configured_instrument_iterator(
-        self,
-        instrument: str,
-        method: parsing.IterationMethod = parsing.IterationMethod.PRODUCT,
-    ) -> Generator[Any, None, None]:
-        """
-        Creates a generator which configures an instrument according to the
-        successive literal configurations represented by the experiment
-        configuration file, and yields the configuration at each step.
-
-        See `parsing.configurations_iterator` for more details.
-        """
-        for config in self.instrument_configurations_iterator(
-            instrument, method=method
-        ):
-            self.configure_instrument(instrument, config)
-            yield config
+        self.experiment_config = experiment_config
+        self.__preconfigure_experiment_instruments(p_experiment_config)
+        self.__build_connection_graph(p_experiment_config)
 
     def __preinit_bench_instruments(self):
         """
@@ -500,43 +445,121 @@ class ExperimentFactory:
             if "loader" not in config:
                 continue
 
-            loader = self.loaders[config.pop("loader")]
-            instrument = BenchInstrument(name, loader(self), config, None)
+            loader_value = config.pop("loader")
+            if not isinstance(loader_value, str):
+                raise TypeError("Loader field must be a string.")
+
+            ChoosenLoader = self.loaders[loader_value]
+            instrument = BenchInstrument(name, ChoosenLoader(self), config, None)
             self.__bench_instruments[name] = instrument
 
-    def __preconfigure_experiment_instruments(self):
+            msg = f"Bench instrument {name} assigned to loader {ChoosenLoader}"
+            logging.info(msg)
+
+    def __preconfigure_experiment_instruments(self, p_experiment_config: dict | None):
         """
-        Prepare for the configuration if the experiment instruments:
+        Prepare for the configuration of the experiment instruments:
          - assign a bench instrument to each of them,
-         - clean their configuration of reserved entries (interface),
+         - clean their configuration of reserved entries (interface, filters),
         but leave them in a non-configured state.
         """
         self.__experiment_instruments = {}
-        for name, config in self.experiment_config.items():
-            if "interface" not in config:
+
+        if p_experiment_config is None:
+            return
+
+        for name, config in p_experiment_config.items():
+            # Filter out non-instrument entries
+            if not isinstance(name, str):
+                raise ValueError("Experiment instruments must have a string name.")
+
+            if not isinstance(config, dict):
                 continue
 
-            interface = config.pop("interface")
-            filter_ = Filter.build_filter(config.pop("filter", {}))
-            bench_instrument = self.__find_bench_instrument(name, interface, filter_)
+            # Get the interface
+            if "interface" not in config:
+                continue
+            interface = config["interface"]
+            assert isinstance(interface, str)
 
+            self.experiment_config = self.experiment_config.remove_child(
+                [name, "interface"]
+            )
+
+            # Get the filters
+            try:
+                filter_dict = config["filter"]
+                assert isinstance(filter_dict, dict)
+                self.experiment_config = self.experiment_config.remove_child(
+                    [name, "filter"]
+                )
+            except KeyError:
+                filter_dict = {}
+
+            filter_ = Filter.build_filter(filter_dict)
+
+            # Select the corresponding bench instrument
+            bench_instrument = self.__find_bench_instrument(name, interface, filter_)
             self.__experiment_instruments[name] = ExperimentInstrument(
                 name, interface, bench_instrument, config
             )
 
-    def __build_connection_graph(self):
+    def __find_bench_instrument(
+        self, exp_name: str, interface: str, filter_: Filter
+    ) -> BenchInstrument:
+        """
+        Find a bench instrument matching and interface and a filter.
+
+        Raises:
+         - KeyError if there are 0 or more than 1 matching instruments.
+        """
+        compatible_instruments = []
+        for instrument in self.__bench_instruments.values():
+            if interface not in instrument.loader.interfaces:
+                continue
+
+            if not filter_.verifies(instrument):
+                continue
+
+            compatible_instruments.append(instrument)
+
+        if len(compatible_instruments) == 0:
+            msg = "Cannot find a suitable bench instrument for experiment "
+            msg += f"instrument '{exp_name}'"
+            raise KeyError(msg)
+
+        if len(compatible_instruments) > 1:
+            compatible_names = [i.name for i in compatible_instruments]
+            msg = "More than one suitable bench instrument for experiment "
+            msg += f"instrument '{exp_name}': {compatible_names}"
+            raise KeyError(msg)
+
+        return compatible_instruments[0]
+
+    def __build_connection_graph(self, p_experiment_config: dict | None):
         """
         Extract the connection graph from the experiment configuration, removing
         `connections` entries from it.
         """
         connections: list[tuple[str, list[str], str, list[str], str]] = (
-            self.__parse_global_connections()
+            self.__parse_global_connections(p_experiment_config)
         )
 
-        for name, config in self.experiment_config.items():
-            connections += self.__parse_instrument_connections(
-                name, config.pop("connections", [])
-            )
+        if isinstance(p_experiment_config, dict):
+            for name, config in p_experiment_config.items():
+                if not isinstance(name, str):
+                    continue
+
+                if not isinstance(config, dict):
+                    continue
+
+                if "connections" in config:
+                    connections += self.__parse_instrument_connections(
+                        name, config["connections"]
+                    )
+                    self.experiment_config = self.experiment_config.remove_child(
+                        [name, "connections"]
+                    )
 
         self.__connections = []
         for src, src_port, dst, dst_port, attr in connections:
@@ -551,10 +574,23 @@ class ExperimentFactory:
             )
 
     def __parse_global_connections(
-        self,
+        self, p_experiment_config: dict | None
     ) -> list[tuple[str, list[str], str, list[str], str]]:
-        connections = []
-        for connection in self.experiment_config.pop("connections", []):
+        connections: list[tuple[str, list[str], str, list[str], str]] = []
+
+        if not isinstance(p_experiment_config, dict):
+            return connections
+
+        if "connections" not in p_experiment_config:
+            return connections
+
+        global_connections = p_experiment_config["connections"]
+        self.experiment_config = self.experiment_config.remove_child(["connections"])
+
+        if not isinstance(global_connections, list):
+            raise TypeError("Experiment configuration connections must be a list")
+
+        for connection in global_connections:
             source_str: str = connection["from"]
             destination_str: str = connection["to"]
             attributes: str = connection.get("attributes", "")
@@ -616,37 +652,92 @@ class ExperimentFactory:
 
         return connections
 
-    def __find_bench_instrument(
-        self, exp_name: str, interface: str, filter_: Filter
-    ) -> BenchInstrument:
+    ### Working with instruments ###
+
+    def initiate_connections(self):
         """
-        Find a bench instrument matching and interface and a filter.
-
-        Raises:
-         - KeyError if there are 0 or more than 1 matching instruments.
+        Lazily initiate the connections of all the bench instruments, *ie.* only
+        those that are matched to an experiment instrument are handled.
         """
-        compatible_instruments = []
-        for instrument in self.__bench_instruments.values():
-            if interface not in instrument.loader.interfaces:
-                continue
+        for experiment_instrument in self.__experiment_instruments.values():
+            be = experiment_instrument.bench_instrument
+            be.initiate_connection()
+            name = experiment_instrument.name
+            self.experiment_instruments[name] = be.instrument
 
-            if not filter_.verifies(instrument):
-                continue
+    def get_bench_instrument(self, name: str) -> Any:
+        """
+        Return the bench instrument whose name is specified, using its loader
+        `initiate_connection` method to create it. If the connection to the
+        instrument has already been initiated, the instrument is simply returned.
 
-            compatible_instruments.append(instrument)
+        This is the only way a bench instrument should be retrieved.
+        """
+        be = self.__bench_instruments[name]
+        if be.instrument is None:
+            be.initiate_connection()
 
-        if len(compatible_instruments) == 0:
-            msg = "Cannot find a suitable bench instrument for experiment "
-            msg += f"instrument '{exp_name}'"
-            raise KeyError(msg)
+            for ei_name, ei_inst in self.__experiment_instruments.items():
+                bi = ei_inst.bench_instrument
+                if bi.name == name:
+                    self.experiment_instruments[ei_name] = bi.instrument
 
-        if len(compatible_instruments) > 1:
-            compatible_names = [i.name for i in compatible_instruments]
-            msg = "More than one suitable bench instrument for experiment "
-            msg += f"instrument '{exp_name}': {compatible_names}"
-            raise KeyError(msg)
+        return be.instrument
 
-        return compatible_instruments[0]
+    def configure_instrument(self, name: str, configuration: dict | None = None):
+        """
+        Configure an experiment instrument using the given configuration, and
+        the `configure` method of its loader. If no configuration is given, use
+        the instrument default configuration from the experiment
+        configuration.
+        """
+        if configuration is None:
+            d_configuration = self.experiment_config[name].default()
+
+            if d_configuration is None:
+                return
+
+            if not isinstance(d_configuration, dict):
+                raise TypeError("Instrument configuration must be a dict.")
+
+            configuration = d_configuration
+
+        experiment_instrument = self.__experiment_instruments[name]
+        instrument = experiment_instrument.bench_instrument.instrument
+        loader = experiment_instrument.bench_instrument.loader
+        loader.configure(instrument, configuration)
+
+    def configure_experiment(self, configuration: dict | None = None):
+        """
+        Configure multiple instruments at once, using the `configure` method of
+        their respective loaders, and the entry of `configuration` matching
+        their name. If `configuration` misses the entry of an instrument, the
+        instrument won't be configured.
+
+        If no configuration is given, the default experiment configuration is
+        used to configure the instruments. In this case, all the instruments are
+        configured.
+        """
+        if configuration is None:
+            d_configuration = self.experiment_config.default()
+
+            if d_configuration is None:
+                return
+
+            if not isinstance(d_configuration, dict):
+                raise TypeError("Instrument configuration must be a dict.")
+
+            configuration = d_configuration
+
+        for name in self.__experiment_instruments:
+            if name in configuration:
+                config = configuration[name]
+
+                if not isinstance(config, dict):
+                    msg = f"Instrument {name} configuration is not a dict."
+                    raise TypeError(msg)
+
+                self.configure_instrument(name, config)
 
     def register_loader(
         self,
@@ -655,8 +746,8 @@ class ExperimentFactory:
             | tuple[
                 str,
                 set[str],
-                Callable[[dict], Any],
-                Callable[[Any, dict], Any],
+                Callable[[DataTree], Any],
+                Callable[[Any, DataTree], Any],
             ]
         ),
     ):
