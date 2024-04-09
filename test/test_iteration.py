@@ -1,3 +1,4 @@
+import dataclasses
 import unittest
 from itertools import product
 
@@ -95,6 +96,14 @@ iteration_leaf = st.one_of(
     sequence(),
 )
 
+iterable_iteration_leaf = st.one_of(
+    iteration_literal(),
+    linear_range(),
+    geometric_range(),
+    integer_range(),
+    sequence(),
+)
+
 ## Iteration nodes ##
 
 
@@ -105,7 +114,11 @@ def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
         st.lists(children, min_size=1, max_size=4)
         | st.dictionaries(data_literal, children, min_size=1, max_size=4)
     )
-    return Node(children)
+
+    if Node is Union:
+        return Node(children, lazy=False, no_default_policy=NoDefaultPolicy.SENTINEL)
+
+    return Node(children, lazy=False)
 
 
 class IdTransform(Transform):
@@ -122,6 +135,19 @@ iteration_tree = st.recursive(
     lambda children: iteration_tree_node(children) | transform(children),
     max_leaves=10,
 )
+
+iterable_iteration_tree = st.recursive(
+    iterable_iteration_leaf,
+    lambda children: iteration_tree_node(children) | transform(children),
+    max_leaves=10,
+)
+
+
+@st.composite
+def iterable_iteration_tree_and_index(draw):
+    tree = draw(iterable_iteration_tree)
+    index = draw(st.integers(min_value=0, max_value=len(tree) - 1))
+    return tree, index
 
 
 ### Tests ###
@@ -146,10 +172,12 @@ class TestIteration(unittest.TestCase):
         r = iter(IntegerRange(start, end, step=step))
         iterator = r
         value = next(iterator)
+        assert isinstance(value, (int, float))
         self.assertEqual(value, start)
         while True:
             try:
                 next_value = next(iterator)
+                assert isinstance(next_value, (int, float))
                 self.assertEqual(abs(next_value - value), step)
                 value = next_value
             except StopIteration:
@@ -173,7 +201,7 @@ class TestIteration(unittest.TestCase):
         """
         del tree
 
-    @given(iteration_tree)
+    @given(iterable_iteration_tree)
     def test_len_consistent_with_iterate(self, tree: IterationTree):
         try:
             n = len(tree)
@@ -183,16 +211,104 @@ class TestIteration(unittest.TestCase):
         except TypeError:
             return
 
+    @given(iterable_iteration_tree)
+    def test_exhausted_iterator_is_exhausted(self, tree: IterationTree):
+        iterator = iter(tree)
+        _ = list(iterator)
+        self.assertEqual(list(iterator), [])
+
+    @given(iterable_iteration_tree)
+    def test_reversible_iterator(self, tree: IterationTree):
+        iterator = iter(tree)
+
+        forward = list(iterator)
+        hypothesis.note(f"Forward: {forward}")
+
+        iterator.reverse()
+        iterator.reset()
+        backward = list(iterator)
+        hypothesis.note(f"Backward: {backward}")
+        backward.reverse()
+
+        self.assertEqual(forward, backward)
+
+    @given(iterable_iteration_tree)
+    def test_reverse_without_reset_is_empty(self, tree: IterationTree):
+        iterator = iter(tree)
+        iterator.reverse()
+
+        self.assertEqual(list(iterator), [])
+
+    @given(iterable_iteration_tree_and_index())
+    def test_reverse_partial_iteration(self, tree_index: tuple[IterationTree, int]):
+        tree, index = tree_index
+        iterator = iter(tree)
+
+        if index == 0:
+            return
+
+        for _ in range(index - 1):
+            _ = next(iterator)
+
+        previous, last = next(iterator), next(iterator)
+        hypothesis.note(f"Last value: {last}")
+        iterator.reverse()
+        previous_after_reverse = next(iterator)
+
+        self.assertEqual(previous, previous_after_reverse)
+
+    @given(iterable_iteration_tree, st.booleans())
+    def test_same_iteration_after_reset(self, tree: IterationTree, reverse: bool):
+        iterator = iter(tree)
+        if reverse:
+            iterator.reverse()
+            iterator.reset()
+
+        l_before_reset = list(iterator)
+        iterator.reset()
+        l_after_reset = list(iterator)
+
+        self.assertEqual(l_before_reset, l_after_reset)
+
+    @given(st.lists(st.integers(min_value=2, max_value=3), min_size=1, max_size=5))
+    def test_cartesian_product_forward_lazy_iteration(self, sizes: list[int]):
+        tree = CartesianProduct(
+            {i: Sequence(list(range(s))) for i, s in enumerate(sizes)}, lazy=False
+        )
+
+        non_lazy_list = list(tree)
+        hypothesis.note(f"Non lazy list: {non_lazy_list}")
+
+        lazy_tree = dataclasses.replace(tree, lazy=True)
+        lazy_list = list(lazy_tree)
+        hypothesis.note(f"Lazy list: {lazy_list}")
+
+        accumulated_lazy_list = []
+        accumulated_element: dict = {}
+        for element in lazy_list:
+            assert isinstance(element, dict)
+            for key in set(accumulated_element.keys()).intersection(element.keys()):
+                self.assertNotEqual(accumulated_element[key], element[key])
+
+            accumulated_element = accumulated_element | element
+            accumulated_lazy_list.append(accumulated_element)
+
+        hypothesis.note(f"Accumulated lazy list: {accumulated_lazy_list}")
+
+        self.assertEqual(non_lazy_list, accumulated_lazy_list)
+
     @given(st.lists(linear_range(), min_size=1, max_size=5))
     def test_cartesian_product_iteration(self, children: list[IterationTree]):
         c = CartesianProduct(children)
-        hypothesis.note(f"Iteration tree: {c}")
+
         iterated_list = list(c)
         formatted_list = "\n".join(f" - {s}" for s in iterated_list)
         hypothesis.note(f"Iterated list:\n{formatted_list}")
+
         expected_list = list(map(list, product(*children)))
         formatted_list = "\n".join(f" - {s}" for s in expected_list)
         hypothesis.note(f"Expected list:\n{formatted_list}")
+
         self.assertEqual(iterated_list, expected_list)
 
     def test_cartesian_product_lazy_iteration(self):
@@ -224,7 +340,8 @@ class TestIteration(unittest.TestCase):
                 0: IntegerRange(1, 2, default_value=10),
                 1: IntegerRange(1, 2, default_value=10),
                 2: IntegerRange(1, 2),
-            }
+            },
+            no_default_policy=NoDefaultPolicy.SKIP,
         )
         iterated_list = list(u)
         expected_list = [
@@ -246,6 +363,7 @@ class TestIteration(unittest.TestCase):
                 2: IntegerRange(1, 2),
             },
             lazy=True,
+            no_default_policy=NoDefaultPolicy.SKIP,
         )
         iterated_list = list(u)
         expected_list = [

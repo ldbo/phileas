@@ -14,6 +14,7 @@ iterate over multiple data sources. Then, `Transform` nodes can be inserted in
 those trees in order to modify the data trees generated while iterating.
 """
 
+import collections.abc
 import dataclasses
 import typing
 from abc import ABC, abstractmethod
@@ -59,6 +60,118 @@ PseudoDataTree = (
 ######################
 
 
+### Iteration ###
+
+
+class TreeIterator(ABC):
+    """
+    Iteration tree iterator. Compared to a usual iterator, it supports forward
+    and backward iteration, and is endlessly usable. This means that, whenever
+    it is "exhausted" (`__next__()` raise `StopIteration`), it can either be
+    reset to its starting position with `reset()`, or its iteration direction
+    can be switched using `reverse()`.
+    """
+
+    #: Current iteration direction of the iterator.
+    forward: bool
+
+    def __init__(self) -> None:
+        self.forward = True
+
+    def __iter__(self) -> Iterator[DataTree]:
+        return self
+
+    def reverse(self):
+        """
+        Reverse the iteration direction of the iterator, but stay at the same
+        position. Thus, if `it` is any `TreeIterator`, the following behavior
+        is expected:
+
+        >>> it.reset()
+        >>> it.reverse()
+        >>> list(it)
+        []
+
+        If you want to iterate over an iteration tree `tree` backward, you have
+        to reset the iterator after having reversed it:
+
+        >>> it = iter(tree)
+        >>> it.reverse()
+        >>> it.reset()
+
+        """
+        self.forward = not self.forward
+
+    @abstractmethod
+    def reset(self):
+        """
+        Reset the internal state of the iterator, so that its next value will be
+        the first iterated value in the current direction. It takes into
+        account the value of forward, going either to the start or the end of
+        the iterated collection.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def __next__(self) -> DataTree:
+        """
+        Return the next iterated value in the current iteration direction.
+        """
+        raise NotImplementedError()
+
+
+@dataclass
+class ListIterator(TreeIterator):
+    """
+    Iterator over a list of data trees.
+
+    It is to be replaced by dedicated iterators dedicated to each concrete
+    numeric range, to reduce memory use.
+    """
+
+    #: Values being iterated
+    sequence: list[DataTree]
+
+    #: Position of the last yielded element.
+    position: int = field(init=False)
+
+    #: Cached length of the sequence
+    length: int = field(init=False)
+
+    def __post_init__(self):
+        super().__init__()
+        self.length = len(self.sequence)
+        self.reset()
+
+    def reset(self):
+        if self.forward:
+            self.position = -1
+        else:
+            self.position = self.length
+
+    def reverse(self):
+        super().reverse()
+
+    def __next__(self) -> DataTree:
+        if self.forward:
+            self.position += 1
+
+            if self.position >= self.length:
+                self.position = self.length
+                raise StopIteration
+        else:
+            self.position -= 1
+
+            if self.position < 0:
+                self.position = -1
+                raise StopIteration
+
+        return self.sequence[self.position]
+
+
+### Indexing ###
+
+
 class _Child(Sentinel):
     """
     Sentinel representing the index of the only child of a 1-ary iteration node.
@@ -70,6 +183,8 @@ class _Child(Sentinel):
 child = _Child()
 
 ChildPath = list[Key | _Child]
+
+### Default related objects ###
 
 
 class NoDefaultPolicy(Enum):
@@ -126,6 +241,9 @@ class _NoDefault(Sentinel):
 no_default = _NoDefault()
 
 
+### Iteration tree API ###
+
+
 class IterationTree(ABC):
     """
     Represents a set of data trees, as well as the way to iterate over them. In
@@ -135,9 +253,9 @@ class IterationTree(ABC):
     """
 
     @abstractmethod
-    def __iter__(self) -> Iterator[DataTree]:
+    def __iter__(self) -> TreeIterator:
         """
-        Yields all the data trees represented by the iteration tree.
+        Return a two-way resetable tree iterator.
         """
         raise NotImplementedError()
 
@@ -323,15 +441,17 @@ class IterationTree(ABC):
 @dataclass(frozen=True)
 class IterationMethod(IterationTree):
     """
-    Node which knows how to iterate through a `list` or `dict` of iteration
-    trees.
+    Iteration node having multiple children, supplied either as a list or
+    dictionary.
 
     In order to implement a concrete iteration method, you should sub-class
-    `IterationMethod` and implement the `__iter__` method.
+    `IterationMethod` and implement a corresponding `IterationMethodIterator`,
+    which is returned by `__iter__()`.
 
     This should remain the only node in an iteration tree that can hold `dict`
-    and `list`. If you are tempted to create another node doing so, you should
-    verify that it cannot be done by sub-classing `IterationMethod` instead.
+    and `list` children. If you are tempted to create another node doing so,
+    you should verify that it cannot be done by sub-classing `IterationMethod`
+    instead.
     """
 
     #: The children of the node. It must not be empty.
@@ -346,43 +466,15 @@ class IterationMethod(IterationTree):
     #: silently. Refer to their documentation or their implementation.
     lazy: bool = field(default=False)
 
-    #: Children trees stored in a list. This allows child-class to only
-    #: implement iteration over lists.
-    #:
-    #: For now, dictionaries are sorted by their key value.
-    _iterated_trees: list[IterationTree] = field(
-        init=False, default_factory=list, repr=False, compare=False, hash=False
-    )
-
-    #: Access keys for the children trees, such that
-    #: `children[_keys[i]] = _iterated_trees[i]`.
-    #:
-    #: Note that the previous statement is not properly typed, as the current
-    #: type hints do not state that `_keys` contains valid keys for `children`.
-    #: However, `IterationMethod.__post_init__` takes care of the validity of
-    #: the runtime types. Because of that, ignoring type checks can be required
-    #: when implementig concrete iteration methods.
-    _keys: list[Key | int] = field(
-        init=False, default_factory=list, repr=False, compare=False, hash=False
-    )
-
     def __post_init__(self):
         if len(self.children) == 0:
             raise ValueError("Empty children are forbidden.")
 
-        if isinstance(self.children, list):
-            self._iterated_trees.extend(self.children)
-            self._keys.extend(range(len(self.children)))
-        elif isinstance(self.children, dict):
-            keys = sorted(self.children.keys())  # type: ignore[type-var]
-            self._keys.extend(keys)
-            trees = (self.children[key] for key in keys)
-            self._iterated_trees.extend(trees)
-        else:
-            raise TypeError("The children don't have a supported type.")
+        if not isinstance(self.children, (list, dict)):
+            raise TypeError("IterationMethod must have list or dict children.")
 
         if self.lazy and not isinstance(self.children, dict):
-            raise TypeError("Lazy iteration is only supported for dictionary children")
+            raise TypeError("Lazy iteration is only supported for dictionary children.")
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         if isinstance(self.children, list):
@@ -477,6 +569,52 @@ class IterationMethod(IterationTree):
         return Node(self.children, *args, **kwargs)
 
 
+class IterationMethodIterator(TreeIterator):
+    """
+    Base class used to implement concrete `IterationMethod` nodes iterators, and
+    providing helper attributes to do so.
+    """
+
+    tree: IterationMethod
+
+    #: Children iterators stored in a list. This, with `keys`, allows
+    #: child-class to only implement iteration over lists.
+    #:
+    #: For now, dictionaries are sorted by their key value.
+    iterators: list[TreeIterator]
+
+    #: Access keys for the children iterators, such that
+    #: `iterators[i]` is an iterator of `tree.children[keys[i]]`.
+    #:
+    #: Note that the previous statement is not properly typed, as the current
+    #: type hints do not state that `keys` contains valid keys for `children`.
+    #: However, the constructor takes care of the validity of the runtime
+    #: types. Because of that, ignoring type checks can be required when
+    #: implementing concrete iteration methods.
+    keys: list[Key | int]
+
+    def __init__(self, tree: IterationMethod) -> None:
+        super().__init__()
+        self.tree = tree
+
+        if isinstance(tree.children, list):
+            self.keys = list(range(len(tree.children)))
+        else:  # isinstance(tree.children, dict)
+            # An exception will be raised if comparison is not possible
+            self.keys = sorted(tree.children.keys())  # type: ignore[type-var]
+
+        self.iterators = [iter(tree.children[key]) for key in self.keys]  # type: ignore[index]
+
+    def reset(self):
+        for iterator in self.iterators:
+            iterator.reset()
+
+    def reverse(self):
+        super().reverse()
+        for iterator in self.iterators:
+            iterator.reverse()
+
+
 @dataclass(frozen=True)
 class CartesianProduct(IterationMethod):
     """
@@ -492,53 +630,90 @@ class CartesianProduct(IterationMethod):
     ```
     """
 
-    def __base_value(self) -> list[DataTree] | dict[Key, DataTree]:
-        """
-        Method used instead of `default`, allowing to build the shape of the
-        elements yielded by `__iter__` with children not having a default value.
-        """
-        if isinstance(self.children, list):
-            return [None for _ in self.children]
-        else:
-            return {key: None for key in self.children}
-
-    def __iter__(self) -> Iterator[DataTree]:
-        """
-        Does not require the children iteration trees to have a default value.
-
-        Implements lazy iteration.
-        """
-        n = len(self._iterated_trees)
-        index = n - 1
-        iterators = [iter(tree) for tree in self._iterated_trees]
-        base = self.__base_value()
-        for key, iterator in zip(self._keys, iterators):
-            base[key] = next(iterator)  # type: ignore[index]
-
-        done = False
-        while not done:
-            yield base.copy()
-
-            if self.lazy:
-                base = {}
-
-            iterator_exhausted = True
-            while iterator_exhausted:
-                try:
-                    base[self._keys[index]] = next(iterators[index])  # type: ignore[index]
-                    index = n - 1
-                    iterator_exhausted = False
-                except StopIteration:
-                    iterators[index] = iter(self._iterated_trees[index])
-                    base[self._keys[index]] = next(iterators[index])  # type: ignore[index]
-                    index -= 1
-
-                    if index == -1:
-                        done = True
-                        break
+    def __iter__(self) -> TreeIterator:
+        return CartesianProductIterator(self)
 
     def __len__(self) -> int:
-        return reduce(int.__mul__, map(len, self._iterated_trees), 1)
+        children: collections.abc.Sized
+        if isinstance(self.children, list):
+            children = self.children
+        else:  # isinstance(self.chidren, dict)
+            children = self.children.values()
+
+        return reduce(int.__mul__, map(len, children), 1)
+
+
+class CartesianProductIterator(IterationMethodIterator):
+    base: list | dict
+
+    #: Indicates if the iterator is exhausted, in the forward and backward
+    #: directions.
+    done: tuple[bool, bool]
+
+    def __init__(self, product: CartesianProduct) -> None:
+        super().__init__(product)
+        self.reset()
+
+    def __base(self):
+        if isinstance(self.tree.children, list):
+            return [next(iterator) for iterator in self.iterators]
+        else:
+            return {
+                key: next(iterator) for key, iterator in zip(self.keys, self.iterators)
+            }
+
+    def reset(self):
+        super().reset()
+        self.done = (False, True)
+
+    def reverse(self):
+        super().reverse()
+        self.done = (self.done[1], self.done[0])
+
+    def __next__(self) -> DataTree:
+        """
+        Lazy iteration is supported, and works except for the case where a child
+        has only one element.
+        """
+        if self.done[0]:
+            raise StopIteration
+
+        if self.done[1]:
+            self.base = self.__base()
+            self.done = (False, False)
+            return self.base.copy()
+
+        if self.tree.lazy:
+            self.base = {}
+
+        # First, find all the children iterators that are exhausted.
+        position = len(self.iterators) - 1
+        while position >= 0:
+            iterator = self.iterators[position]
+            try:
+                self.base[self.keys[position]] = next(iterator)  # type: ignore[index]
+                break
+            except StopIteration:
+                position -= 1
+
+        # Then,
+        #   - register that the iterator is exhausted if all of them are
+        #     exhausted;
+        #   - or reset them, and yield the current value.
+        if position == -1:
+            self.done = (True, False)
+            raise StopIteration
+        else:
+            position += 1
+            while position < len(self.iterators):
+                iterator = self.iterators[position]
+                iterator.reset()
+                self.base[self.keys[position]] = next(iterator)  # type: ignore[index]
+                position += 1
+
+            self.done = (False, False)
+
+            return self.base.copy()
 
 
 @dataclass(frozen=True)
@@ -551,35 +726,108 @@ class Union(IterationMethod):
     not implementing a default value.
     """
 
-    no_default_policy = NoDefaultPolicy.SKIP
+    #: Policy used while iterating, to generate the values returned for the
+    #: children that are not being iterated over.
+    no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
 
-    def __iter__(self) -> Iterator[DataTree]:
-        """
-        Does not require the children trees to have a default value.
-
-        Implements lazy iteration.
-        """
-        iterators = [iter(tree) for tree in self._iterated_trees]
-        base = self.default(no_default_policy=self.no_default_policy)
-        assert isinstance(base, (dict, list))
-        current = base.copy()
-
-        for index, iterator in enumerate(iterators):
-            for value in iterator:
-                current[self._keys[index]] = value  # type: ignore[index]
-                yield current
-
-                if self.lazy:
-                    current = {}
-                else:
-                    current = base.copy()
-
-            key = self._keys[index]
-            if key in base:
-                current[key] = base[key]  # type: ignore[index]
+    def __iter__(self) -> TreeIterator:
+        return UnionIterator(self)
 
     def __len__(self) -> int:
-        return sum(map(len, self._iterated_trees))
+        children: collections.abc.Sized
+        if isinstance(self.children, list):
+            children = self.children
+        else:  # isinstance(self.children, dict)
+            children = self.children.values()
+        return sum(map(len, children))
+
+
+@dataclass
+class UnionIterator(IterationMethodIterator):
+    #: Iterator over the children indices, whose values are stored in
+    #: `current_index`, and used to know which child is currently iterated
+    #: over.
+    indices: ListIterator = field(init=False)
+
+    #: Special value -1 just after reset. Even for lazy iteration, returns all
+    #: the values.
+    current_index: int = field(init=False)
+
+    #: Indicates that, at the next iteration, a new `current_index` will be
+    #: drawn.
+    change_index: bool = field(init=False)
+
+    #: Cached children default values.
+    default_values: list | dict = field(init=False)
+
+    def __init__(self, union: Union) -> None:
+        super().__init__(union)
+
+        self.indices = ListIterator(list(range(len(self.iterators))))
+        self.reset()
+
+        self.yield_all_children = True
+        self.default_values = self.__default_values()
+
+    def __default_values(self) -> dict | list:
+        assert isinstance(self.tree, Union)
+        default_values = self.tree.default(self.tree.no_default_policy)
+        assert isinstance(default_values, (dict, list))
+
+        return default_values
+
+    def reset(self):
+        super().reset()
+        self.indices.reset()
+        self.current_index = -1
+        self.change_index = True
+
+    def reverse(self):
+        super().reverse()
+        self.indices.reverse()
+
+    def __next__(self) -> DataTree:
+        return self.__next()
+
+    def __next(self, children: None | list | dict = None) -> DataTree:
+        # First iteration after reset
+        if self.current_index == -1:
+            assert self.change_index
+            children = self.__default_values()
+
+        # First iteration with a new index
+        if self.change_index:
+            index = next(self.indices)
+            assert isinstance(index, int)
+            self.current_index = index
+            self.change_index = False
+
+        # Children is not None just after a child iterator has been exhausted.
+        if children is None:
+            if self.tree.lazy:
+                children = {}
+            else:
+                children = self.default_values.copy()
+
+        current_key = self.keys[self.current_index]
+        try:
+            new_value = next(self.iterators[self.current_index])
+        except StopIteration:
+            # A child iterator has been exhausted
+            self.change_index = True
+
+            try:
+                children[current_key] = self.default_values[current_key]  # type: ignore[index]
+            except KeyError:
+                assert isinstance(self.tree, Union)
+                if self.tree.no_default_policy != NoDefaultPolicy.SKIP:
+                    raise
+
+            return self.__next(children)
+
+        children[current_key] = new_value  # type: ignore[index]
+
+        return children
 
 
 @dataclass(frozen=True)
@@ -601,9 +849,8 @@ class Transform(IterationTree):
         """
         raise NotImplementedError()
 
-    def __iter__(self) -> Iterator[DataTree]:
-        for data_child in self.child:
-            yield self.transform(data_child)
+    def __iter__(self) -> TreeIterator:
+        return TransformIterator(self)
 
     def __len__(self) -> int:
         return len(self.child)
@@ -616,18 +863,21 @@ class Transform(IterationTree):
     ) -> DataTree | _NoDefault:
         error: None | NoDefaultError = None
         try:
+            # This is the only statement that can raise an exception.
             child_default = self.child.default(no_default_policy)
+
+            # We keep those lines here so that `child_default` is explicitly
+            # bound.
+            if isinstance(child_default, _NoDefault):
+                return no_default
+
+            return self.transform(child_default)
         except NoDefaultError as err:
             own_path: ChildPath = [child]
             error = NoDefaultError(err.args[0], own_path + err.path)
 
-        if error is not None:
-            raise error
-
-        if isinstance(child_default, _NoDefault):
-            return no_default
-
-        return self.transform(child_default)
+        assert error is not None
+        raise error
 
     def __getitem__(self, key: Key) -> IterationTree:
         return self.child[key]
@@ -656,6 +906,26 @@ class Transform(IterationTree):
     ) -> IterationTree:
         # The signature of `Node` is statically unknown
         return Node(self.child, *args, **kwargs)  # type: ignore[call-arg]
+
+
+@dataclass
+class TransformIterator(TreeIterator):
+    transform_node: Transform
+    child_iterator: TreeIterator = field(init=False)
+
+    def __post_init__(self):
+        super().__init__()
+        self.child_iterator = iter(self.transform_node.child)
+
+    def reset(self):
+        self.child_iterator.reset()
+
+    def reverse(self):
+        super().reverse()
+        self.child_iterator.reverse()
+
+    def __next__(self) -> DataTree:
+        return self.transform_node.transform(next(self.child_iterator))
 
 
 @dataclass(frozen=True)
@@ -705,8 +975,8 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
 
     value: DT
 
-    def __iter__(self) -> Iterator[DT]:
-        yield self.value
+    def __iter__(self) -> TreeIterator:
+        return ListIterator([self.value])
 
     def __len__(self) -> int:
         return 1
@@ -744,7 +1014,7 @@ class NumericRange(IterationLeaf, Generic[T]):
     end: T
     default_value: T | _NoDefault = field(default_factory=_NoDefault)
 
-    def __iter__(self) -> Iterator[T]:
+    def __iter__(self) -> TreeIterator:
         raise TypeError("Cannot iterate over a numeric range.")
 
     def __len__(self) -> int:
@@ -784,13 +1054,18 @@ class LinearRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def __iter__(self) -> Iterator[float]:
+    def __iter__(self) -> TreeIterator:
+        sequence: list
         if self.steps == 1:
-            yield self.start
+            sequence = [self.start]
         else:
             delta = self.end - self.start
-            for step in range(self.steps):
-                yield self.start + delta * step / (self.steps - 1)
+            sequence = [
+                self.start + delta * step / (self.steps - 1)
+                for step in range(self.steps)
+            ]
+
+        return ListIterator(sequence)
 
     def __len__(self) -> int:
         return self.steps
@@ -812,17 +1087,19 @@ class GeometricRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def __iter__(self) -> Iterator[float]:
+    def __iter__(self) -> TreeIterator:
+        sequence: list
         if self.steps == 1:
-            yield self.start
+            sequence = [self.start]
         else:
             sign = 1 if self.start > 0 else -1
             start = self.start * sign
             end = self.end * sign
             ratio = exp(log(end / start) / (self.steps - 1))
 
-            for e in range(self.steps):
-                yield sign * start * (ratio**e)
+            sequence = [sign * start * (ratio**e) for e in range(self.steps)]
+
+        return ListIterator(sequence)
 
     def __len__(self) -> int:
         return self.steps
@@ -841,13 +1118,16 @@ class IntegerRange(NumericRange[int]):
         if self.step < 0 or (self.start != self.end and self.step < 1):
             raise ValueError("Invalid step size")
 
-    def __iter__(self) -> Iterator[int]:
+    def __iter__(self) -> TreeIterator:
+        sequence: list
         if self.step == 0:
-            yield self.start
+            sequence = [self.start]
         else:
             direction = 1 if self.end > self.start else -1
-            for m in range(1 + abs(self.end - self.start) // self.step):
-                yield self.start + direction * m * self.step
+            positions = range(1 + abs(self.end - self.start) // self.step)
+            sequence = [self.start + direction * m * self.step for m in positions]
+
+        return ListIterator(sequence)
 
     def __len__(self) -> int:
         return 1 + abs(self.end - self.start) // self.step
@@ -866,8 +1146,8 @@ class Sequence(IterationLeaf):
         if len(self.elements) == 0:
             raise ValueError("Empty elements are forbidden.")
 
-    def __iter__(self) -> Iterator[DataTree]:
-        return iter(self.elements)
+    def __iter__(self) -> TreeIterator:
+        return ListIterator(self.elements)
 
     def __len__(self) -> int:
         return len(self.elements)
@@ -886,7 +1166,7 @@ class Sequence(IterationLeaf):
             else:  # no_default_policy == NoDefaultPolicy.SKIP:
                 return no_default
 
-        return self.elements[0]
+        return self.default_value
 
     def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]
         """
