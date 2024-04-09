@@ -334,6 +334,48 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
+    def test_cartesian_product_snake_iteration(self):
+        tree = CartesianProduct(
+            children={1: Sequence([1, 2, 3]), 2: Sequence(["a", "b", "c"])},
+            lazy=False,
+            snake=True,
+        )
+        iterated_list = list(tree)
+        expected_list = [
+            {1: 1, 2: "a"},
+            {1: 1, 2: "b"},
+            {1: 1, 2: "c"},
+            {1: 2, 2: "c"},
+            {1: 2, 2: "b"},
+            {1: 2, 2: "a"},
+            {1: 3, 2: "a"},
+            {1: 3, 2: "b"},
+            {1: 3, 2: "c"},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_cartesian_product_lazy_snake_iteration(self):
+        tree = CartesianProduct(
+            children={1: Sequence([1, 2, 3]), 2: Sequence(["a", "b", "c"])},
+            lazy=True,
+            snake=True,
+        )
+        iterated_list = list(tree)
+        expected_list = [
+            {1: 1, 2: "a"},
+            {2: "b"},
+            {2: "c"},
+            {1: 2},
+            {2: "b"},
+            {2: "a"},
+            {1: 3},
+            {2: "b"},
+            {2: "c"},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
     def test_union_iteration(self):
         u = Union(
             {

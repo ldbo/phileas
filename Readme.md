@@ -114,8 +114,9 @@ power: !sequence
     accessible with the `iter()` function.
   - The nodes of an iteration tree are `iteration.IterationMethod`, *ie*. they
     specify in which order their children should be iterated over. The default
-    iteration node is `iteration.CartesianProduct`, which can be made `lazy`.
-    The `iteration.Union` iteration method is also supported.
+    iteration node is `iteration.CartesianProduct`, which can be made `lazy` or
+    use a `snake` search, which allows to speed up the experiment. The
+    `iteration.Union` iteration method is also supported.
   - An iteration tree can have a default value, accessible with
     `iteration.IterationTree.default()`, which can be used to represent a safe
     value for example.

@@ -630,6 +630,10 @@ class CartesianProduct(IterationMethod):
     ```
     """
 
+    #: Enable snake iteration, which guarantees that successive yielded elements
+    #: differ by only one key at most (a la Gray code).
+    snake: bool = False
+
     def __iter__(self) -> TreeIterator:
         return CartesianProductIterator(self)
 
@@ -699,7 +703,7 @@ class CartesianProductIterator(IterationMethodIterator):
         # Then,
         #   - register that the iterator is exhausted if all of them are
         #     exhausted;
-        #   - or reset them, and yield the current value.
+        #   - or reset/reverse them, and yield the current value.
         if position == -1:
             self.done = (True, False)
             raise StopIteration
@@ -707,8 +711,19 @@ class CartesianProductIterator(IterationMethodIterator):
             position += 1
             while position < len(self.iterators):
                 iterator = self.iterators[position]
-                iterator.reset()
-                self.base[self.keys[position]] = next(iterator)  # type: ignore[index]
+
+                assert isinstance(self.tree, CartesianProduct)
+                if self.tree.snake:
+                    iterator.reverse()
+                else:
+                    iterator.reset()
+
+                if self.tree.snake and self.tree.lazy:
+                    # Just consume the former last, now first, value, as it does
+                    # not require to be updated
+                    next(iterator)
+                else:
+                    self.base[self.keys[position]] = next(iterator)  # type: ignore[index]
                 position += 1
 
             self.done = (False, False)
