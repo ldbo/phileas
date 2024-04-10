@@ -15,20 +15,13 @@ import numpy as np
 from ruamel import yaml
 from ruamel.yaml import YAML
 
-from phileas import iteration
-from phileas.iteration import (
-    CartesianProduct,
-    DataTree,
-    IterationLiteral,
-    IterationTree,
-    _NoDefault,
-)
+from . import iteration
 
 _data_tree_parser = YAML(typ="safe")
 _iteration_tree_parser = YAML(typ="safe")
 
 
-def load_data_tree_from_yaml_file(file: Path | str) -> DataTree:
+def load_data_tree_from_yaml_file(file: Path | str) -> iteration.DataTree:
     """
     Parses a YAML configuration file (from its path or its content) into a
     data tree.
@@ -36,7 +29,7 @@ def load_data_tree_from_yaml_file(file: Path | str) -> DataTree:
     return _data_tree_parser.load(file)
 
 
-def load_iteration_tree_from_yaml_file(file: Path | str) -> IterationTree:
+def load_iteration_tree_from_yaml_file(file: Path | str) -> iteration.IterationTree:
     """
     Parses a YAML configuration file (from its path or its content) into an
     iteration tree. Iteration will be based on cartesian products, and
@@ -51,7 +44,7 @@ def load_iteration_tree_from_yaml_file(file: Path | str) -> IterationTree:
 
 class YamlCustomType(ABC):
     @abstractmethod
-    def to_iteration_tree(self) -> IterationTree:
+    def to_iteration_tree(self) -> iteration.IterationTree:
         raise NotImplementedError()
 
 
@@ -108,11 +101,11 @@ class Range(YamlCustomType, Generic[RT]):
         if self.progression not in ("linear", "geometric"):
             raise ValueError("!range progression must be linear or geometric.")
 
-    def to_iteration_tree(self) -> IterationTree:
+    def to_iteration_tree(self) -> iteration.IterationTree:
         start = self.start
         end = self.end
 
-        default: RT | _NoDefault
+        default: RT | iteration._NoDefault
         if self.default is None:
             default = iteration.no_default
         else:
@@ -196,8 +189,8 @@ class Sequence(YamlCustomType):
 
         return Sequence(elements=elements, default=default)
 
-    def to_iteration_tree(self) -> IterationTree:
-        default: DataTree | _NoDefault
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        default: iteration.DataTree | iteration._NoDefault
         if self.default is None:
             default = iteration.no_default
         else:
@@ -209,19 +202,19 @@ class Sequence(YamlCustomType):
 ### Conversion to iteration tree ###
 
 
-def raw_yaml_structure_to_iteration_tree(structure: Any) -> IterationTree:
+def raw_yaml_structure_to_iteration_tree(structure: Any) -> iteration.IterationTree:
     if isinstance(structure, list):
         list_children = list(map(raw_yaml_structure_to_iteration_tree, structure))
-        return CartesianProduct(list_children)
+        return iteration.CartesianProduct(list_children)
     elif isinstance(structure, dict):
         dict_children = {
             key: raw_yaml_structure_to_iteration_tree(value)
             for key, value in structure.items()
         }
-        return CartesianProduct(dict_children)
+        return iteration.CartesianProduct(dict_children)
     elif isinstance(structure, YamlCustomType):
         return structure.to_iteration_tree()
     elif isinstance(structure, (NoneType, bool, str, int, float)):
-        return IterationLiteral(structure)  # type: ignore[type-var]
+        return iteration.IterationLiteral(structure)  # type: ignore[type-var]
     else:
         raise ValueError(f"Unsupported value {structure}.")
