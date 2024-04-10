@@ -555,7 +555,7 @@ class ExperimentFactory:
 
                 if "connections" in config:
                     connections += self.__parse_instrument_connections(
-                        name, config["connections"]
+                        name, config["connections"], p_experiment_config
                     )
                     self.experiment_config = self.experiment_config.remove_child(
                         [name, "connections"]
@@ -616,7 +616,7 @@ class ExperimentFactory:
         return connections
 
     def __parse_instrument_connections(
-        self, name: str, config: dict
+        self, name: str, config: dict, p_experiment_config: dict
     ) -> list[tuple[str, list[str], str, list[str], str]]:
         connections = []
         for connection in config:
@@ -625,7 +625,7 @@ class ExperimentFactory:
             attributes: str = connection.get("attributes", "")
 
             source_elements = source_str.split(".")
-            if source_elements[0] in self.experiment_config:
+            if source_elements[0] in p_experiment_config:
                 source_instrument = source_elements[0]
                 source_port = source_elements[1:]
             else:
@@ -633,7 +633,7 @@ class ExperimentFactory:
                 source_port = source_elements
 
             destination_elements = destination_str.split(".")
-            if destination_elements[0] in self.experiment_config:
+            if destination_elements[0] in p_experiment_config:
                 destination_instrument = destination_elements[0]
                 destination_port = destination_elements[1:]
             else:
