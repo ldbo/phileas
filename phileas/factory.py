@@ -14,6 +14,8 @@ import graphviz  # type: ignore[import]
 from . import parsing
 from .iteration import DataTree, IterationTree, Key
 
+logger = logging.getLogger("phileas")
+
 ### Loaders ###
 
 
@@ -228,6 +230,7 @@ class BenchInstrument:
     instrument: Any | None = None
 
     def initiate_connection(self):
+        logger.info(f"Initiating connection to {self.name}.")
         self.instrument = self.loader.initiate_connection(self.configuration)
 
 
@@ -384,9 +387,9 @@ class ExperimentFactory:
         if isinstance(bench, Path):
             self.bench_file = bench
             bench_config = parsing.load_data_tree_from_yaml_file(bench)
-            logging.info(f"Bench configuration loaded from {bench}.")
+            logger.info(f"Bench configuration loaded from {bench}.")
         else:
-            logging.info("Bench configuration supplied as a data tree.")
+            logger.info("Bench configuration supplied as a data tree.")
             self.bench_file = None
             if isinstance(bench, str):
                 bench_config = parsing.load_data_tree_from_yaml_file(bench)
@@ -409,7 +412,7 @@ class ExperimentFactory:
         if isinstance(experiment, Path):
             self.experiment_file = experiment
             experiment_config = parsing.load_iteration_tree_from_yaml_file(experiment)
-            logging.info(f"Experiment configuration loaded from {experiment}.")
+            logger.info(f"Experiment configuration loaded from {experiment}.")
         else:
             self.experiment_file = None
             if isinstance(experiment, str):
@@ -418,7 +421,7 @@ class ExperimentFactory:
                 )
             else:
                 experiment_config = experiment
-            logging.info("Experiment configuration supplied as an iteration tree.")
+            logger.info("Experiment configuration supplied as an iteration tree.")
 
         p_experiment_config = experiment_config.to_pseudo_data_tree()
 
@@ -453,8 +456,8 @@ class ExperimentFactory:
             instrument = BenchInstrument(name, ChoosenLoader(self), config, None)
             self.__bench_instruments[name] = instrument
 
-            msg = f"Bench instrument {name} assigned to loader {ChoosenLoader}"
-            logging.info(msg)
+            msg = f"Bench instrument {name} assigned to loader {ChoosenLoader}."
+            logger.info(msg)
 
     def __preconfigure_experiment_instruments(self, p_experiment_config: dict | None):
         """
@@ -504,6 +507,10 @@ class ExperimentFactory:
                 name, interface, bench_instrument, config
             )
 
+            msg = f"Matching experiment instrument {name} with bench instrument"
+            msg += f" {bench_instrument.name}."
+            logger.info(msg)
+
     def __find_bench_instrument(
         self, exp_name: str, interface: str, filter_: Filter
     ) -> BenchInstrument:
@@ -519,6 +526,9 @@ class ExperimentFactory:
                 continue
 
             if not filter_.verifies(instrument):
+                msg = f"Bench instrument {instrument.name} has the interface "
+                msg += f"required by {exp_name}, but does not match its filter."
+                logger.info(msg)
                 continue
 
             compatible_instruments.append(instrument)
@@ -659,11 +669,14 @@ class ExperimentFactory:
         Lazily initiate the connections of all the bench instruments, *ie.* only
         those that are matched to an experiment instrument are handled.
         """
+        logger.info("Initiating connections to the used instruments.")
         for experiment_instrument in self.__experiment_instruments.values():
             be = experiment_instrument.bench_instrument
             be.initiate_connection()
             name = experiment_instrument.name
             self.experiment_instruments[name] = be.instrument
+
+        logger.info("Connections initiation is done.")
 
     def get_bench_instrument(self, name: str) -> Any:
         """

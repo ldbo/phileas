@@ -163,6 +163,12 @@ files:
    Markdown output can be redirected to a file if needed, with `python -m
    phileas list-loaders > loaders_doc.md`.
 
+# Logging
+
+ - Phileas has a dedicated logger, which uses the Python standard
+   [logging](https://docs.python.org/3/library/logging.html#module-logging)
+   module. The logger is called `"phileas"`.
+
 # Developer notes
 
 - The repository depends on [Poetry](https://python-poetry.org/) for
