@@ -23,3 +23,7 @@
 - Implement union iteration, possibly lazy.
 - Logging now uses a dedicated logger, name `"phileas"`.
 - Test values are generated using hypothesis.
+
+# 0.3.1
+
+ - Allow iteration nodes to control the iteration order.
