@@ -2,6 +2,7 @@
 
 __version__ = "0.3"
 
+from . import factory, iteration, parsing, utility
 from .factory import (
     ExperimentFactory,
     Loader,
