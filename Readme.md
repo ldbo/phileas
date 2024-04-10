@@ -61,13 +61,21 @@
 
 ### Iteration through multiple configurations
 
- - Custom iterable YAML datatypes are implemented, which allow a single
-   configuration file to represent multiple concrete configurations:
-   - `!range` is parsed to a `parsing.NumericRange`, and represents a continuous
-     range of numbers;
-   - `!sequence` is parsed to a `parsing.Sequence`, and represents a sequence of
-     values.
- - A typical use case is the following:
+ - The experiment configuration file has reserved keywords that allow to
+   represent not a single literal value, but an iterable collections of values.
+   Thus, a single experiment configuration file can be iterated over - so it is
+   represented by an *iteration tree* (`iteration.IterationTree`) -, yielding
+   individual configurations, which are *data tree*
+   (`iteration.DataTree`) objects and represent the usual content of a YAML
+   file (*ie*. nested dictionaries and lists).
+ - The supported custom iterable YAML data types are
+   - `!range`, which is parsed to a `iteration.NumericRange` (or a subclass),
+     and represents a continuous range of numbers;
+   - `!sequence` is parsed to a `iteration.Sequence`, and represents a
+     sequence of values.
+ - To know the exact supported syntax for the custom YAML types, see the
+   `parsing` module, which is responsible for parsing a YAML file into an
+   `iteration.IterationTree`. A typical example is the following:
 
  ```yaml
 position: !range
@@ -80,21 +88,38 @@ power: !sequence
   default: 1
  ```
 
- - See the `parsing` module for documentation about how the iterable objects
-   work.
- - After parsing the experiment file, the iterables are available in the
-   configuration dictionaries and can be converted to arrays with their
-   `to_array` method.
- - When using iterables, the configuration file can be thought of as a
-   representation of multiple so-called *literal configurations* or *concrete
-   configurations*, where each entry having an iterable value is replaced
-   by one of the values that it represents contains. Iterating through those
-   configurations is possible using the `
-   [experiment|instrument]_configurations_iterator` and `configured_
-   [experiment|instrument]_iterator` methods.
+ - In practice, you use an `ExperimentFactory` to parse the experiment
+   configuration file into an `iteration.IterationTree`, and then you can
+   modify it for non-simple experiments. To modify an iteration tree, you can
+   use the *path API* : the location of each node of an iteration tree is
+   represented by a path (`iteration.ChildPath`), which is the list of the
+   indices to use to access the node. The `iteration.IterationTree` *path API*
+   exposes different methods to access and modify a tree:
+     - `get` gives access to an internal node;
+     - `insert_child`, `remove_child` and `insert_transform` allow to modify the
+       structure of a tree;
+     - `replace_node` modifies the state of internal nodes.
+ - Additionally, you can use an iteration tree (almost) as if it were a nested
+   list/dict, as it supports the `[]` operator. If you want it to actually be a
+   nested dict/list object, you can use its `default()` method, or
+   `to_pseudo_data_tree()`. This last method returns a nested collection of
+   lists and dictionaries, but keeps the iteration leaves of the iteration
+   tree.
  - Each of the iterable objects have an optional `default` value, which is the
    default value used, when not iterating through it.
 
+  - Given an iteration tree, you can then iterate over it, as if it were a
+    collection (*eg*. a `list`) of data trees. You can also use the resetable
+    2-way iterator returned by `iteration.IterationTree.__iter__()`, which is
+    accessible with the `iter()` function.
+  - The nodes of an iteration tree are `iteration.IterationMethod`, *ie*. they
+    specify in which order their children should be iterated over. The default
+    iteration node is `iteration.CartesianProduct`, which can be made `lazy` or
+    use a `snake` search, which allows to speed up the experiment. The
+    `iteration.Union` iteration method is also supported.
+  - An iteration tree can have a default value, accessible with
+    `iteration.IterationTree.default()`, which can be used to represent a safe
+    value for example.
 
 # Python API
 
@@ -138,6 +163,12 @@ files:
    Markdown output can be redirected to a file if needed, with `python -m
    phileas list-loaders > loaders_doc.md`.
 
+# Logging
+
+ - Phileas has a dedicated logger, which uses the Python standard
+   [logging](https://docs.python.org/3/library/logging.html#module-logging)
+   module. The logger is called `"phileas"`.
+
 # Developer notes
 
 - The repository depends on [Poetry](https://python-poetry.org/) for
@@ -154,9 +185,11 @@ files:
 - Test files are stored in the `test` module. You can use `unittest` to
   automatically discover and run them, using for example `python -m unittest`
   from the root of the repository.
+- Some tests files implement property-based testing, using
+  [https://hypothesis.readthedocs.io](Hypothesis) for data generation.
 - Test `TestFunctional1`, and the associated `functional_1_
   {config.py,experiment.yaml,bench.yaml}` configuration files are a good
-  example to start using the Phileas.
-- Pre-commit hooks are managed by [pre-commmit]
-  (https://pre-commit.com/), which is a developer dependency. To use them, call
-  `pre-commit install` from the project virtual environment.
+  example to start using Phileas.
+- Pre-commit hooks are managed by [pre-commmit](https://pre-commit.com/), which
+  is a developer dependency. To use them, call `pre-commit install` from the
+  project virtual environment.

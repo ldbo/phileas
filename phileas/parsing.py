@@ -1,103 +1,165 @@
+"""
+This module allows to parse configuration files (usually using the YAML format)
+to data and iteration trees, as defined in the `iteration` module. In
+particular, it defines the supported custom YAML types.
+"""
+
 from abc import ABC, abstractmethod
-from copy import deepcopy
 from dataclasses import dataclass
-from enum import Enum
-from itertools import product
 from math import ceil
 from pathlib import Path
-from typing import Any, ClassVar, Generator, Iterable, Iterator, Literal
+from types import NoneType
+from typing import Any, ClassVar, Generic, Literal, TypeVar
 
 import numpy as np
 from ruamel import yaml
 from ruamel.yaml import YAML
 
-_yaml = YAML(typ="safe")
+from . import iteration
+
+_data_tree_parser = YAML(typ="safe")
+_iteration_tree_parser = YAML(typ="safe")
 
 
-def load_yaml_dict_from_file(file: Path | str) -> dict:
-    data = _yaml.load(file)
-
-    if data is None:
-        data = {}
-
-    if not isinstance(data, dict):
-        raise ValueError(f"YAML file {file} top-level object should be a map")
-
-    return data
+def load_data_tree_from_yaml_file(file: Path | str) -> iteration.DataTree:
+    """
+    Parses a YAML configuration file (from its path or its content) into a
+    data tree.
+    """
+    return _data_tree_parser.load(file)
 
 
-class ConfigurationIterable(ABC):
-    """Representation of an iterable object to be used in a configuration file."""
+def load_iteration_tree_from_yaml_file(file: Path | str) -> iteration.IterationTree:
+    """
+    Parses a YAML configuration file (from its path or its content) into an
+    iteration tree. Iteration will be based on cartesian products, and
+    iteration leaves can be specified with custom YAML types.
+    """
+    raw_data = _iteration_tree_parser.load(file)
+    return raw_yaml_structure_to_iteration_tree(raw_data)
 
-    #: Default value of the iterable, used when it is not being iterated.
-    default: Any | None
 
+### Custom YAML types ###
+
+
+class YamlCustomType(ABC):
     @abstractmethod
-    def __iter__(self) -> Iterator[Any]:
+    def to_iteration_tree(self) -> iteration.IterationTree:
         raise NotImplementedError()
 
 
-@_yaml.register_class
+# Numeric type of the Range
+RT = TypeVar("RT", bound=int | float)
+
+
+@_iteration_tree_parser.register_class
 @dataclass
-class NumericRange(ConfigurationIterable):
+class Range(YamlCustomType, Generic[RT]):
+    """
+    Range of numbers, that can optionally (but usually will) specify an
+    iteration method. It can be converted to an iteration leaf using
+    `to_iteration_tree`.
+
+    The `start` and `end` attributes are mandatory, and `default` can be
+    optionally specified.
+
+    `steps` or `resolution` (but not both) can be specified. If they are, and
+    `progression` is not, or equals `"linear"`, the range will represent
+      - an `iteration.IntegerRange` if `start` and `end` are integers and
+        `resolution` is used and is an integer;
+      - an `iteration.LinearRange` otherwise.
+
+    If `progression` is `geometric`, the `Range` will represent an
+    `iteration.GeometricRange`.
+
+    If neither `steps` nor `resolution` is specified, the range will represent
+    an `iteration.NumericRange`.
+    """
+
     yaml_tag: ClassVar[str] = "!range"
-    start: float | int
-    end: float | int
+    start: RT
+    end: RT
+    default: RT | None = None
     steps: int | None = None
     resolution: float | int | None = None
     progression: Literal["linear"] | Literal["geometric"] = "linear"
-    default: float | int | None = None
 
     def __post_init__(self):
-        steps_none = self.steps is None
-        resolution_none = self.resolution is None
-        if steps_none == resolution_none:
-            msg = "!range object should define one of steps and resolution parameters."
+        if self.steps is not None and self.resolution is not None:
+            msg = "!range object must have only one of steps and resolution."
             raise ValueError(msg)
 
+        if not isinstance(self.steps, (int, NoneType)):
+            raise ValueError("!range steps parameter must be an integer.")
+
         if self.steps is not None and self.steps <= 0:
-            raise ValueError("!range object should have a positive number of steps")
+            raise ValueError("!range steps must be positive.")
 
-        if self.resolution is not None:
-            if self.progression == "linear" and self.resolution <= 0:
-                raise ValueError("The resolution of a linear !range must be >0")
-            elif self.progression == "geometric" and self.resolution <= 1:
-                raise ValueError("The resolution of a geometric !range must be >1")
+        if self.resolution is not None and self.resolution <= 0:
+            raise ValueError("!range resolution parameter must be positive.")
 
-    def to_array(self) -> np.ndarray:
-        if self.progression == "linear":
-            if self.steps is not None:
+        if self.progression not in ("linear", "geometric"):
+            raise ValueError("!range progression must be linear or geometric.")
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        start = self.start
+        end = self.end
+
+        default: RT | iteration._NoDefault
+        if self.default is None:
+            default = iteration.no_default
+        else:
+            default = self.default
+
+        def is_int(i: object) -> bool:
+            return isinstance(i, int)
+
+        if self.steps is None and self.resolution is None:
+            return iteration.NumericRange(start, end, default_value=default)
+        elif (
+            is_int(start)
+            and is_int(end)
+            and is_int(self.resolution)
+            and (is_int(default) or default is iteration.no_default)
+        ):
+            assert isinstance(start, int)
+            assert isinstance(end, int)
+            assert isinstance(default, int) or default is iteration.no_default
+            assert isinstance(self.resolution, int)
+            return iteration.IntegerRange(
+                start, end, default_value=default, step=self.resolution  # type: ignore[arg-type]
+            )
+        elif self.progression in (None, "linear"):
+            assert isinstance(end, (int, float))
+            assert isinstance(start, (int, float))
+            if self.resolution is not None:
+                steps = ceil(abs(end - start) / self.resolution) + 1  # type: ignore[operator]
+            else:
+                assert self.steps is not None
                 steps = self.steps
-            else:  # Then use resolution
-                resolution = self.resolution
-                assert resolution is not None
-                steps = ceil(abs(self.end - self.start) / resolution) + 1
 
-            return np.linspace(self.start, self.end, num=steps)
-        else:  # progression == "geometric"
-            if self.steps is not None:
-                steps = self.steps
-            else:  # Then use resolution
-                resolution = self.resolution
-                assert resolution is not None
-                global_ratio = self.end / self.start
+            return iteration.LinearRange(start, end, default_value=default, steps=steps)
+        else:
+            if self.resolution is not None:
+                global_ratio = self.end / self.start  # type: ignore[operator]
                 if global_ratio < 1:
                     global_ratio = 1 / global_ratio
+                steps = ceil(np.log(global_ratio) / np.log(self.resolution)) + 1
+            else:
+                assert self.steps is not None
+                steps = self.steps
 
-                steps = ceil(np.log(global_ratio) / np.log(resolution)) + 1
-
-            return np.geomspace(self.start, self.end, num=steps)
-
-    def __iter__(self) -> Iterator[float]:
-        return iter(self.to_array())
+            return iteration.GeometricRange(
+                start, end, default_value=default, steps=steps
+            )
 
 
-@_yaml.register_class
+@_iteration_tree_parser.register_class
 @dataclass
-class Sequence(ConfigurationIterable):
+class Sequence(YamlCustomType):
     yaml_tag: ClassVar[str] = "!sequence"
-    elements: list[Any]
-    default: Any | None = None
+    elements: list[iteration.DataTree]
+    default: iteration.DataTree | None = None
 
     @classmethod
     def to_yaml(cls, representer: yaml.Representer, node: "Sequence"):
@@ -127,153 +189,32 @@ class Sequence(ConfigurationIterable):
 
         return Sequence(elements=elements, default=default)
 
-    def to_array(self) -> list[Any]:
-        return self.elements
-
-    def __iter__(self) -> Iterator[Any]:
-        return iter(self.elements)
-
-
-class IterationMethod(Enum):
-    """
-    Represent a way of iterating through a tuple of ConfigurationIterable
-    objects (I1, ..., In).
-    """
-
-    #: Cartesian product of the iterables, in lexicographic order
-    PRODUCT = "product"
-
-    #: Only one iterable is iterated at a time, starting from the first one. The
-    #: iterables must have a usable default value, which is used when they are
-    #: not being iterated.
-    UNION = "union"
-
-
-def configurations_iterator(
-    config: dict, method: IterationMethod = IterationMethod.PRODUCT
-) -> Generator[dict, None, None]:
-    """
-    Yields the different literal configurations represented by a configuration
-    which contains (or does not, actually we don't care) iterables.
-
-    See also IterationMethod.
-
-    >>> config = {
-    ...     "a": Sequence([1, 12], default=1),
-    ...     "b": NumericRange(0, 1, 2, default=4),
-    ...     "c": 3,
-    ... }
-    >>> for c in configurations_iterator(config):
-    ...     print(c)
-    {'a': 1, 'b': 0.0, 'c': 3}
-    {'a': 1, 'b': 1.0, 'c': 3}
-    {'a': 12, 'b': 0.0, 'c': 3}
-    {'a': 12, 'b': 1.0, 'c': 3}
-    >>> for c in configurations_iterator(config, method=IterationMethod.UNION):
-    ...     print(c)
-    {'a': 1, 'b': 4, 'c': 3}
-    {'a': 12, 'b': 4, 'c': 3}
-    {'a': 1, 'b': 0.0, 'c': 3}
-    {'a': 1, 'b': 1.0, 'c': 3}
-
-    """
-    if method == IterationMethod.PRODUCT:
-        return _configurations_iterator_product(config)
-    elif method == IterationMethod.UNION:
-        return _configurations_iterator_union(config)
-
-
-def _configurations_iterator_product(config: dict) -> Generator[dict, None, None]:
-    iterables_locations: list[list[str]] = _find_iterables_locations(config)
-    iterables: list[ConfigurationIterable] = [
-        _get_nested_element(config, loc) for loc in iterables_locations
-    ]
-
-    for values in product(*iterables):
-        literal_config = deepcopy(config)
-        for location, value in zip(iterables_locations, values):
-            _set_nested_element(literal_config, location, value)
-
-        yield literal_config
-
-
-def _configurations_iterator_union(config: dict) -> Generator[dict, None, None]:
-    iterables_locations: list[list[str]] = _find_iterables_locations(config)
-    iterables: list[ConfigurationIterable] = [
-        _get_nested_element(config, loc) for loc in iterables_locations
-    ]
-
-    default_config = default_configuration(config)
-
-    for iterable_location, iterable in zip(iterables_locations, iterables):
-        for value in iterable:
-            literal_config = deepcopy(default_config)
-            _set_nested_element(literal_config, iterable_location, value)
-
-            yield literal_config
-
-
-def default_configuration(config: dict) -> dict:
-    """
-    Converts a configuration to a literal configuration, by using the default
-    value its iterable entries. The iterable default value, if not specified,
-    is None.
-    """
-    iterables_locations: list[list[str]] = _find_iterables_locations(config)
-
-    default_config = deepcopy(config)
-    for location in iterables_locations:
-        default_value = _get_nested_element(config, location).default
-        _set_nested_element(default_config, location, default_value)
-
-    return default_config
-
-
-def _find_iterables_locations(
-    collection: dict | list | Any,
-    current_location: list | None = None,
-) -> list[list]:
-    """
-    Find the locations of the numeric ranges in a nested collection, containing
-    of dict, list, literal and numpy.ndarray objects.
-
-    The numeric ranges are defined to be the numpy arrays.
-
-    In a nested collection, the location of an item is defined to be the list
-    of indices to recursively access, starting from the top-level collection, in
-    order to find the item.
-    """
-    if current_location is None:
-        current_location = []
-
-    locations = []
-    next_level_iterator: Iterable[tuple[Any, Any]]
-    if isinstance(collection, dict):
-        next_level_iterator = collection.items()
-    elif isinstance(collection, list):
-        next_level_iterator = enumerate(collection)
-    else:
-        next_level_iterator = []
-
-    for key, value in next_level_iterator:
-        new_loc = current_location.copy() + [key]
-        if isinstance(value, ConfigurationIterable):
-            locations.append(new_loc)
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        default: iteration.DataTree | iteration._NoDefault
+        if self.default is None:
+            default = iteration.no_default
         else:
-            locations += _find_iterables_locations(value, new_loc)
+            default = self.default
 
-    return locations
-
-
-def _get_nested_element(d: dict | list, location: list) -> Any:
-    for key in location:
-        d = d[key]
-
-    return d
+        return iteration.Sequence(self.elements, default)
 
 
-def _set_nested_element(d: dict | list, location: list, v: Any) -> Any:
-    for key in location[:-1]:
-        d = d[key]
+### Conversion to iteration tree ###
 
-    d[location[-1]] = v
+
+def raw_yaml_structure_to_iteration_tree(structure: Any) -> iteration.IterationTree:
+    if isinstance(structure, list):
+        list_children = list(map(raw_yaml_structure_to_iteration_tree, structure))
+        return iteration.CartesianProduct(list_children)
+    elif isinstance(structure, dict):
+        dict_children = {
+            key: raw_yaml_structure_to_iteration_tree(value)
+            for key, value in structure.items()
+        }
+        return iteration.CartesianProduct(dict_children)
+    elif isinstance(structure, YamlCustomType):
+        return structure.to_iteration_tree()
+    elif isinstance(structure, (NoneType, bool, str, int, float)):
+        return iteration.IterationLiteral(structure)  # type: ignore[type-var]
+    else:
+        raise ValueError(f"Unsupported value {structure}.")
