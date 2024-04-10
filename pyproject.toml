@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "phileas"
-version = "0.2.0"
+version = "0.3"
 description = ""
 authors = ["Louis Dubois <louis.dubois@ssi.gouv.fr>"]
 readme = "Readme.md"
