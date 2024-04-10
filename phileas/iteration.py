@@ -457,6 +457,11 @@ class IterationMethod(IterationTree):
     #: The children of the node. It must not be empty.
     children: list[IterationTree] | dict[Key, IterationTree]
 
+    #: Order of iteration over the children. How it is used depends on the
+    #: concrete iteration method implementation. It must be a permutation of the
+    #: set of keys of `children`.
+    order: list[Key] | None = None
+
     #: Notify the iteration method to be lazy. For now, this feature is only
     #: supported for `dict` children. In this case, lazy iteration will just
     #: yield the keys that have changed at each step.
@@ -472,6 +477,20 @@ class IterationMethod(IterationTree):
 
         if not isinstance(self.children, (list, dict)):
             raise TypeError("IterationMethod must have list or dict children.")
+
+        if self.order is not None:
+            keys: set[Key]
+            if isinstance(self.children, list):
+                keys = set(range(len(self.children)))
+            else:
+                keys = set(self.children.keys())
+
+            if len(self.order) != len(set(self.order)):
+                raise ValueError("The iteration order must not have repetitions.")
+
+            if set(self.order) != keys:
+                msg = "The iteration order must be a permutation of the children keys."
+                raise ValueError(msg)
 
         if self.lazy and not isinstance(self.children, dict):
             raise TypeError("Lazy iteration is only supported for dictionary children.")
@@ -580,7 +599,9 @@ class IterationMethodIterator(TreeIterator):
     #: Children iterators stored in a list. This, with `keys`, allows
     #: child-class to only implement iteration over lists.
     #:
-    #: For now, dictionaries are sorted by their key value.
+    #: If the iteration tree does specify an order, use it. Otherwise,
+    #: dictionaries are sorted by their key value, and lists keep the same
+    #: order.
     iterators: list[TreeIterator]
 
     #: Access keys for the children iterators, such that
@@ -597,7 +618,9 @@ class IterationMethodIterator(TreeIterator):
         super().__init__()
         self.tree = tree
 
-        if isinstance(tree.children, list):
+        if tree.order is not None:
+            self.keys = tree.order
+        elif isinstance(tree.children, list):
             self.keys = list(range(len(tree.children)))
         else:  # isinstance(tree.children, dict)
             # An exception will be raised if comparison is not possible
@@ -628,6 +651,9 @@ class CartesianProduct(IterationMethod):
             for v3 in c3:
                 yield [v1, v2, v3]
     ```
+
+    If an order is specified, its first element will correspond to the outermost
+    loop, and its last to the innermost one.
     """
 
     #: Enable snake iteration, which guarantees that successive yielded elements
@@ -734,7 +760,8 @@ class CartesianProductIterator(IterationMethodIterator):
 @dataclass(frozen=True)
 class Union(IterationMethod):
     """
-    Iteration over one child at a time, starting with the first one.
+    Iteration over one child at a time, starting with the first one (or the
+    first one of the order, if specified).
 
     For children that have a default value, they will be reset to it when they
     are not being iterated. However, there will be no complain about children
