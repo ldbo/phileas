@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 
 from phileas import iteration
 from phileas.iteration import (
+    AccumulatorTransform,
     CartesianProduct,
     DataTree,
     FunctionalTranform,
@@ -354,6 +355,34 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    @given(
+        st.lists(
+            st.dictionaries(
+                st.integers(min_value=0, max_value=4),
+                st.text(max_size=2),
+                min_size=1,
+                max_size=5,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    def test_accumulating_transform(self, dicts: list[dict[int, str]]):
+        nac_tree = Sequence(dicts)  # type: ignore[arg-type]
+        ac_nac_list = []
+        ac_data_tree: dict[int, str] = {}
+        for data_tree in nac_tree:
+            ac_data_tree |= data_tree  # type: ignore[arg-type]
+            ac_nac_list.append(ac_data_tree.copy())
+
+        hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
+
+        ac_tree = AccumulatorTransform(Sequence(dicts))  # type: ignore[arg-type]
+        ac_list = list(ac_tree)
+        hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
+
+        self.assertEqual(ac_list, ac_nac_list)
 
     def test_cartesian_product_lazy_snake_iteration(self):
         tree = CartesianProduct(

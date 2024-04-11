@@ -999,6 +999,44 @@ class FunctionalTranform(Transform):
         return self.f(data_tree)
 
 
+@dataclass(frozen=True)
+class AccumulatorTransform(Transform):
+    """
+    Transform node that accumulates its inputs, as a kind of *unlazifying*
+    transform:
+      - if its successive inputs are dictionaries, merge them using the union
+        operator, and return the results;
+      - else, leave its inputs untouched.
+    """
+
+    #: Start value of the accumulator, which must either be a dictionary, or
+    #: `None`.
+    start_value: dict[Key, DataTree] | None = None
+
+    def __iter__(self) -> TreeIterator:
+        return AccumulatorTransformIterator(self, last_value=self.start_value)
+
+    def transform(self, data_tree: DataTree) -> DataTree:
+        return data_tree
+
+
+@dataclass
+class AccumulatorTransformIterator(TransformIterator):
+    last_value: dict | None
+
+    def __next__(self) -> DataTree:
+        data_tree = super().__next__()
+        if isinstance(data_tree, dict):
+            if isinstance(self.last_value, dict):
+                self.last_value |= data_tree
+            else:
+                self.last_value = data_tree
+
+            return self.last_value.copy()
+        else:
+            return data_tree
+
+
 ### Leaves ###
 
 
