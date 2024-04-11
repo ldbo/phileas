@@ -15,7 +15,9 @@ from phileas.iteration import (
     GeometricRange,
     IntegerRange,
     IterationLiteral,
+    IterationMethod,
     IterationTree,
+    Key,
     LinearRange,
     NoDefaultPolicy,
     NumericRange,
@@ -34,6 +36,7 @@ from phileas.iteration import (
 
 data_literal = st.integers(0, 2)
 data_tree = data_literal
+key = data_literal
 
 
 ## Iteration leaves ##
@@ -383,6 +386,28 @@ class TestIteration(unittest.TestCase):
         hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
 
         self.assertEqual(ac_list, ac_nac_list)
+
+    @given(
+        st.dictionaries(key, sequence(), min_size=1, max_size=5),
+        st.sampled_from([CartesianProduct, Union]),
+    )
+    def test_accumulated_lazy_iteration_identical_to_iteration(
+        self, children: dict[Key, IterationTree], Type: type[IterationMethod]
+    ):
+        tree = Type(children, lazy=False)
+        non_lazy_list = list(tree)
+        hypothesis.note("Non lazy list: \n" + "\n".join(map(str, non_lazy_list)))
+
+        acc_lazy_list = list(
+            tree.replace_node([], type(tree), lazy=True).insert_transform(
+                [], AccumulatorTransform
+            )
+        )
+        hypothesis.note(
+            "Accumulated lazy list: \n" + "\n".join(map(str, acc_lazy_list))
+        )
+
+        self.assertEqual(non_lazy_list, acc_lazy_list)
 
     def test_cartesian_product_lazy_snake_iteration(self):
         tree = CartesianProduct(
