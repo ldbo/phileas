@@ -680,8 +680,15 @@ class CartesianProductIterator(IterationMethodIterator):
     #: directions.
     done: tuple[bool, bool]
 
+    #: Contains, at `position`, whether the tree children at the position
+    #: `key[position]` is 1 element long.
+    trivial_length_child: list[bool]
+
     def __init__(self, product: CartesianProduct) -> None:
         super().__init__(product)
+        self.trivial_length_child = [
+            len(self.tree.children[key]) == 1 for key in self.keys  # type: ignore[index]
+        ]
         self.reset()
 
     def __base(self):
@@ -705,9 +712,11 @@ class CartesianProductIterator(IterationMethodIterator):
         Lazy iteration is supported, and works except for the case where a child
         has only one element.
         """
+        # Last iteration in the current direction
         if self.done[0]:
             raise StopIteration
 
+        # First iteration in the current direction
         if self.done[1]:
             self.base = self.__base()
             self.done = (False, False)
@@ -725,6 +734,9 @@ class CartesianProductIterator(IterationMethodIterator):
                 break
             except StopIteration:
                 position -= 1
+
+        # At this point, all the children at positions > `position` are
+        # exhausted in their current direction.
 
         # Then,
         #   - register that the iterator is exhausted if all of them are
@@ -748,8 +760,13 @@ class CartesianProductIterator(IterationMethodIterator):
                     # Just consume the former last, now first, value, as it does
                     # not require to be updated
                     next(iterator)
+                elif self.tree.lazy and self.trivial_length_child[position]:
+                    # This "new" value is the same as before, as the child has
+                    # only one element. Just consume it.
+                    next(iterator)
                 else:
                     self.base[self.keys[position]] = next(iterator)  # type: ignore[index]
+
                 position += 1
 
             self.done = (False, False)
