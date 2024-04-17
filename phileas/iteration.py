@@ -434,6 +434,27 @@ class IterationTree(ABC):
 
             return new_me
 
+    def depth_first_modify(
+        self, modifier: Callable[["IterationTree", ChildPath], "IterationTree"]
+    ) -> "IterationTree":
+        """
+        Using a post-fix depth-first search, replace each `node` of the tree,
+        located at `path`, with `modifier(node, path)`.
+        """
+        return self._depth_first_modify(modifier, [])
+
+    @abstractmethod
+    def _depth_first_modify(
+        self,
+        modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
+        path: ChildPath,
+    ) -> "IterationTree":
+        """
+        Recursive implementation of `depth_first_modify`, implemented by the
+        different node types.
+        """
+        raise NotImplementedError()
+
 
 ### Nodes ###
 
@@ -586,6 +607,25 @@ class IterationMethod(IterationTree):
             raise TypeError(f"Cannot replace an iteration method with a {Node}")
 
         return Node(self.children, *args, **kwargs)
+
+    def _depth_first_modify(
+        self,
+        modifier: Callable[[IterationTree, ChildPath], IterationTree],
+        path: ChildPath,
+    ) -> IterationTree:
+        new_children: dict[Key, IterationTree] | list[IterationTree]
+        if isinstance(self.children, list):
+            new_children = [
+                child._depth_first_modify(modifier, path + [position])
+                for position, child in enumerate(self.children)
+            ]
+        else:
+            new_children = {
+                position: child._depth_first_modify(modifier, path + [position])
+                for position, child in self.children.items()
+            }
+
+        return modifier(dataclasses.replace(self, children=new_children), path)
 
 
 class IterationMethodIterator(TreeIterator):
@@ -966,6 +1006,14 @@ class Transform(IterationTree):
         # The signature of `Node` is statically unknown
         return Node(self.child, *args, **kwargs)  # type: ignore[call-arg]
 
+    def _depth_first_modify(
+        self,
+        modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
+        path: ChildPath,
+    ) -> "IterationTree":
+        new_child = self.child._depth_first_modify(modifier, path + [child])
+        return modifier(dataclasses.replace(self, child=new_child), path)
+
 
 @dataclass
 class TransformIterator(TreeIterator):
@@ -1059,6 +1107,13 @@ class IterationLeaf(IterationTree):
             raise TypeError(f"Cannot replace an iteration leaf with a {Node}")
 
         return Node(*args, **kwargs)
+
+    def _depth_first_modify(
+        self,
+        modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
+        path: ChildPath,
+    ) -> "IterationTree":
+        return modifier(self, path)
 
 
 DT = TypeVar("DT", bound=DataTree)
