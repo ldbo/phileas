@@ -1085,6 +1085,69 @@ class AccumulatorIterator(TransformIterator):
             return data_tree
 
 
+@dataclass(frozen=True)
+class Lazify(Transform):
+    """
+    Transform node that only returns the elements that were updated in its
+    children values (for dictionary values), or leaves its inputs untouched
+    (for other types).
+    """
+
+    def __iter__(self) -> TreeIterator:
+        return LazifyIterator(self)
+
+    def transform(self, data_tree: DataTree) -> DataTree:
+        return data_tree
+
+
+class LazifyIterator(TreeIterator):
+    tree: Lazify
+    iterator: TreeIterator
+
+    #: Accumulation of the values yielded by the tree iterator. If it generates
+    #: a non-dict value, then stores `None`.
+    accumulated_value: dict[Key, DataTree] | None
+
+    def __init__(self, tree: Lazify):
+        self.tree = tree
+        self.iterator = iter(self.tree.child)
+        self.reset()
+
+    def reset(self):
+        self.iterator.reset()
+        self.last_value = None
+        self.accumulated_value = None
+
+    def reverse(self):
+        super().reverse()
+        self.iterator.reverse()
+
+    def __next__(self) -> DataTree:
+        new_value = next(self.iterator)
+        print(f"{self.accumulated_value=}")
+
+        if isinstance(new_value, dict):
+            if not isinstance(self.accumulated_value, dict):
+                self.accumulated_value = {}
+
+            new_value_keys = set(new_value.keys())
+            accumulated_keys = set(self.accumulated_value.keys())
+            new_keys = new_value_keys - accumulated_keys
+            common_keys = new_value_keys & accumulated_keys
+            updated_keys = {
+                key
+                for key in common_keys
+                if self.accumulated_value[key] != new_value[key]
+            }
+            updated_values = {key: new_value[key] for key in updated_keys | new_keys}
+
+            self.accumulated_value |= new_value
+            return updated_values
+        else:
+            self.accumulated_value = None
+            return new_value
+
+
 ### Leaves ###
 
 
