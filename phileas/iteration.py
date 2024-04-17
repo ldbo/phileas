@@ -1514,6 +1514,20 @@ class RandomIterationLeaf(IterationLeaf):
         return self.default()  # type: ignore[return-value]
 
 
+def generate_seeds(tree: IterationTree, salt: DataTree | None = None) -> IterationTree:
+    """
+    Populate the seeds of the random leaves of the tree, using the given salt.
+    """
+
+    def _generate_seed(tree: IterationTree, path: ChildPath) -> IterationTree:
+        if isinstance(tree, RandomIterationLeaf):
+            return dataclasses.replace(tree, seed=Seed(path, salt))
+        else:
+            return tree
+
+    return tree.depth_first_modify(_generate_seed)
+
+
 ###########
 # Utility #
 ###########
