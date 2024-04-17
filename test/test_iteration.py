@@ -8,7 +8,7 @@ from hypothesis import strategies as st
 
 from phileas import iteration
 from phileas.iteration import (
-    AccumulatorTransform,
+    Accumulator,
     CartesianProduct,
     DataTree,
     FunctionalTranform,
@@ -381,7 +381,7 @@ class TestIteration(unittest.TestCase):
 
         hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
 
-        ac_tree = AccumulatorTransform(Sequence(dicts))  # type: ignore[arg-type]
+        ac_tree = Accumulator(Sequence(dicts))  # type: ignore[arg-type]
         ac_list = list(ac_tree)
         hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
 
@@ -400,7 +400,7 @@ class TestIteration(unittest.TestCase):
 
         acc_lazy_list = list(
             tree.replace_node([], type(tree), lazy=True).insert_transform(
-                [], AccumulatorTransform
+                [], Accumulator
             )
         )
         hypothesis.note(

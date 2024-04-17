@@ -1048,7 +1048,7 @@ class FunctionalTranform(Transform):
 
 
 @dataclass(frozen=True)
-class AccumulatorTransform(Transform):
+class Accumulator(Transform):
     """
     Transform node that accumulates its inputs, as a kind of *unlazifying*
     transform:
@@ -1062,14 +1062,14 @@ class AccumulatorTransform(Transform):
     start_value: dict[Key, DataTree] | None = None
 
     def __iter__(self) -> TreeIterator:
-        return AccumulatorTransformIterator(self, last_value=self.start_value)
+        return AccumulatorIterator(self, last_value=self.start_value)
 
     def transform(self, data_tree: DataTree) -> DataTree:
         return data_tree
 
 
 @dataclass
-class AccumulatorTransformIterator(TransformIterator):
+class AccumulatorIterator(TransformIterator):
     last_value: dict | None
 
     def __next__(self) -> DataTree:
