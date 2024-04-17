@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import reduce
 from math import exp, log
-from typing import Callable, Generic, Iterator, TypeVar
+from typing import Any, Callable, Generic, Iterator, TypeVar
 
 from .utility import Sentinel
 
@@ -47,7 +47,9 @@ DataTree = DataLiteral | dict[Key, "DataTree"] | list["DataTree"]
 
 #: A leave of a pseudo data tree is either a data tree leave, or a non-trivial
 #: iteration tree leave.
-PseudoDataLiteral = typing.Union[DataLiteral, "NumericRange", "Sequence"]
+PseudoDataLiteral = typing.Union[
+    DataLiteral, "NumericRange", "Sequence", "GeneratorWrapper"
+]
 
 #: A pseudo data tree is a data tree whose leaves can be non literal iteration
 #: leaves.
@@ -1214,6 +1216,73 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
         """
         # A `KeyError` is raised in case of an improper index.
         return self.value[key]  # type: ignore[index]
+
+
+@dataclass(frozen=True)
+class GeneratorWrapper(IterationLeaf):
+    """
+    Wrapper around a generator function, which can be used in order not to have
+    to implement an new iteration leave, and its iterator. Not that only forward
+    iteration is supported by the node.
+    """
+
+    generator_function: Callable[[Any], Iterator[DataTree]]
+    args: list = field(default_factory=list)
+    kwargs: dict = field(default_factory=dict)
+    size: int | None = None
+    default_value: DataTree = field(default_factory=_NoDefault)
+
+    def __len__(self) -> int:
+        if self.size is not None:
+            return self.size
+
+        raise ValueError("Generator wrapper does not have a size.")
+
+    def default(
+        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
+    ) -> DataTree | _NoDefault:
+        if self.default_value != no_default:
+            return self.default_value
+
+        if no_default_policy == NoDefaultPolicy.ERROR:
+            raise NoDefaultError("No default value.", [])
+        elif no_default_policy == NoDefaultPolicy.SENTINEL:
+            return no_default
+        else:  # no_default_policy == NoDefaultPolicy.SKIP
+            return no_default
+
+    def __iter__(self) -> TreeIterator:
+        return GeneratorWrapperIterator(self)
+
+    def __getitem__(self, key: Key) -> IterationTree:
+        raise TypeError("Generator wrapper does not support indexing.")
+
+    def to_pseudo_data_tree(self) -> PseudoDataTree:
+        return self
+
+
+class GeneratorWrapperIterator(TreeIterator):
+    tree: GeneratorWrapper
+    generator: Iterator[DataTree]
+
+    def __init__(self, tree: GeneratorWrapper):
+        super().__init__()
+        self.tree = tree
+        self.reset()
+
+    def __next__(self) -> DataTree:
+        return next(self.generator)
+
+    def reset(self):
+        self.generator = self.tree.generator_function(
+            *self.tree.args, **self.tree.kwargs
+        )
+
+    def reverse(self):
+        raise TypeError("Generator wrapper iterator does not support reverse.")
+
+
+## Numeric ranges
 
 
 T = TypeVar("T", bound=int | float)
