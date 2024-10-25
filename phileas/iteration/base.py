@@ -6,7 +6,7 @@ iteration (data tree, pseudo data tree and iteration tree).
 import typing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 if TYPE_CHECKING:
     from _typeshed import Self
@@ -528,3 +528,6 @@ class IterationLeaf(IterationTree):
         path: ChildPath,
     ) -> "IterationTree":
         return modifier(self, path)
+
+    def __getitem__(self, key: Key) -> "IterationTree":
+        raise TypeError(f"{self.__class__.__name__} does not support indexing.")

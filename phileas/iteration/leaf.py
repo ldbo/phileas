@@ -13,7 +13,6 @@ from .base import (
     ChildPath,
     DataTree,
     IterationLeaf,
-    IterationTree,
     Key,
     NoDefaultError,
     NoDefaultPolicy,
@@ -101,9 +100,6 @@ class GeneratorWrapper(IterationLeaf):
     def __iter__(self) -> TreeIterator:
         return GeneratorWrapperIterator(self)
 
-    def __getitem__(self, key: Key) -> IterationTree:
-        raise TypeError("Generator wrapper does not support indexing.")
-
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
 
@@ -174,9 +170,6 @@ class NumericRange(IterationLeaf, Generic[T]):
                 return no_default
 
         return self.default_value
-
-    def __getitem__(self, key: Key) -> IterationTree:
-        raise TypeError("Numeric ranges do not support indexing.")
 
 
 @dataclass(frozen=True)
