@@ -72,7 +72,9 @@
    - `!range`, which is parsed to a `iteration.NumericRange` (or a subclass),
      and represents a continuous range of numbers;
    - `!sequence` is parsed to a `iteration.Sequence`, and represents a
-     sequence of values.
+     sequence of values;
+   - `!random` is parsed to a `iteration.NumpyRNG`, and represents a collection
+     of pseudo-random number.
  - To know the exact supported syntax for the custom YAML types, see the
    `parsing` module, which is responsible for parsing a YAML file into an
    `iteration.IterationTree`. A typical example is the following:
@@ -86,6 +88,13 @@ time: !sequence [0.15, 0.20, 0.45]
 power: !sequence
   elements: [1, 2, 5]
   default: 1
+voltage: !random
+  distribution: uniform
+  parameters:
+    low: 12
+    high: 13
+  size: 5
+  default: 0
  ```
 
  - In practice, you use an `ExperimentFactory` to parse the experiment

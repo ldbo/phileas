@@ -15,8 +15,15 @@ import numpy as np
 from ruamel import yaml
 from ruamel.yaml import YAML
 
+from phileas.iteration.base import DataTree
+from phileas.iteration.leaf import NumpyRNG
+
 from . import iteration
 
+# Warning: using the safe loader disables calling __post_init__ in dataclasses,
+# which effectively skips data verification in some custom YAML types. Using the
+# round-trip loader (ie. not specifying `typ`) solve this issue, but changes the
+# signature of `construct_mapping`.
 _data_tree_parser = YAML(typ="safe")
 _iteration_tree_parser = YAML(typ="safe")
 
@@ -197,6 +204,25 @@ class Sequence(YamlCustomType):
             default = self.default
 
         return iteration.Sequence(self.elements, default)
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class Random(YamlCustomType):
+    yaml_tag: ClassVar[str] = "!random"
+    distribution: str
+    parameters: dict[str, Any]
+    size: int | None = None
+    default: DataTree | None = None
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return NumpyRNG(
+            seed=None,
+            size=self.size,
+            default_value=self.default,
+            distribution=getattr(np.random.Generator, self.distribution),
+            kwargs=self.parameters,
+        )
 
 
 ### Conversion to iteration tree ###
