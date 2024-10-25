@@ -6,7 +6,12 @@ iteration (data tree, pseudo data tree and iteration tree).
 import typing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, Generic, Iterator, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, TypeVar
+
+if TYPE_CHECKING:
+    from _typeshed import Self
+else:
+    Self = Any
 
 from ..utility import Sentinel
 
@@ -55,7 +60,10 @@ class DefaultIndex(Sentinel):
     pass
 
 
-class TreeIterator(ABC):
+T = TypeVar("T", bound="IterationTree", covariant=True)
+
+
+class TreeIterator(ABC, Generic[T]):
     """
     Iteration tree iterator.
 
@@ -70,7 +78,7 @@ class TreeIterator(ABC):
     """
 
     #: Reference to the tree being iterated over.
-    tree: "IterationTree"
+    tree: T
 
     #: Current iteration direction of the iterator.
     #:
@@ -88,12 +96,12 @@ class TreeIterator(ABC):
     #: modified by sub-classes. However, it can be read.
     position: int
 
-    def __init__(self, tree: "IterationTree") -> None:
+    def __init__(self, tree: T) -> None:
         self.__forward = True
         self.position = -1
         self.tree = tree
 
-    def __iter__(self) -> Iterator[DataTree]:
+    def __iter__(self: Self) -> Self:
         return self
 
     def reset(self):
@@ -304,7 +312,7 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
-    def iterate(self) -> Iterator[DataTree]:
+    def iterate(self) -> TreeIterator:
         """
         Other name of `__iter__`, which can be more explicit in for example
         `list(tree.iterate())`.

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from functools import reduce
 from itertools import accumulate
 from operator import mul
-from typing import Callable, Sequence
+from typing import Callable, Sequence, TypeVar
 
 from .base import (
     ChildPath,
@@ -198,7 +198,10 @@ class IterationMethod(IterationTree):
         return modifier(dataclasses.replace(self, children=new_children), path)
 
 
-class IterationMethodIterator(TreeIterator):
+T = TypeVar("T", bound=IterationMethod, covariant=True)
+
+
+class IterationMethodIterator(TreeIterator[T]):
     """
     Base class used to implement concrete `IterationMethod` nodes iterators, and
     providing helper attributes to do so.
@@ -216,7 +219,7 @@ class IterationMethodIterator(TreeIterator):
     sizes: list[int]
 
     #: Last returned positions of the child iterators.
-    positions: list[int | DefaultIndex | None]
+    positions: Sequence[int | DefaultIndex | None]
 
     #: Access keys for the children iterators, such that
     #: `iterators[i]` is an iterator of `tree.children[keys[i]]`.
@@ -228,7 +231,7 @@ class IterationMethodIterator(TreeIterator):
     #: implementing concrete iteration methods.
     keys: list[Key | int]
 
-    def __init__(self, tree: IterationMethod) -> None:
+    def __init__(self, tree: T) -> None:
         super().__init__(tree)
 
         if tree.order is not None:
@@ -237,7 +240,8 @@ class IterationMethodIterator(TreeIterator):
             self.keys = list(range(len(tree.children)))
         else:  # isinstance(tree.children, dict)
             # An exception will be raised if comparison is not possible
-            self.keys = sorted(tree.children.keys())  # type: ignore[type-var]
+            assert isinstance(tree.children, dict)
+            self.keys = list(sorted(tree.children.keys()))
 
         self.iterators = [iter(tree.children[key]) for key in self.keys]  # type: ignore[index]
         self.positions = [it.position for it in self.iterators]
@@ -282,7 +286,7 @@ class IterationMethodIterator(TreeIterator):
         if isinstance(self.tree.children, list):
             self.positions = new_positions
             assert all(pos is not None for pos in new_positions)
-            return [it[pos] for it, pos in zip(self.iterators, new_positions)]
+            return [it[pos] for it, pos in zip(self.iterators, new_positions)]  # type: ignore[index]
 
         ret = {}
         for i, pos in enumerate(new_positions):
@@ -331,7 +335,7 @@ class CartesianProduct(IterationMethod):
         return reduce(int.__mul__, map(len, children), 1)
 
 
-class CartesianProductIterator(IterationMethodIterator):
+class CartesianProductIterator(IterationMethodIterator[CartesianProduct]):
     #: Reversed cumulated products of `sizes`, with `size` + 1 elements, and
     #: ending at 1.
     cumsizes: list[int]
@@ -394,7 +398,7 @@ class Union(IterationMethod):
         )
 
 
-class UnionIterator(IterationMethodIterator):
+class UnionIterator(IterationMethodIterator[Union]):
     #: Cumulated sum of the iterated sizes of the children.
     cumsizes: list[int]
 
@@ -404,7 +408,7 @@ class UnionIterator(IterationMethodIterator):
     #: Index of the first children without a default value.
     first_without_default: int
 
-    def __init__(self, tree: IterationMethod) -> None:
+    def __init__(self, tree: Union) -> None:
         super().__init__(tree)
 
         try:
@@ -415,7 +419,7 @@ class UnionIterator(IterationMethodIterator):
             cumsize = 0
 
             for i, (key, size) in enumerate(zip(self.keys, self.sizes)):
-                no_default = _has_no_default(self.tree.children[key])
+                no_default = _has_no_default(self.tree.children[key])  # type: ignore[index]
                 self.no_default[i] = no_default
                 if no_default and self.first_without_default == -2:
                     self.first_without_default = i
@@ -531,11 +535,14 @@ class Transform(IterationTree):
         return modifier(dataclasses.replace(self, child=new_child), path)
 
 
-class TransformIterator(TreeIterator):
-    transform_node: Transform
-    child_iterator: TreeIterator
+U = TypeVar("U", bound=Transform, covariant=True)
 
-    def __init__(self, tree: Transform):
+
+class TransformIterator(TreeIterator[U]):
+    transform_node: U
+    child_iterator: TreeIterator[U]
+
+    def __init__(self, tree: U):
         super().__init__(tree)
         self.child_iterator = iter(tree.child)
 
@@ -584,7 +591,7 @@ class Accumulator(Transform):
         return data_tree
 
 
-class AccumulatorIterator(TransformIterator):
+class AccumulatorIterator(TransformIterator[Accumulator]):
     last_value: dict | None
 
     def __init__(self, tree: Accumulator):
@@ -623,7 +630,7 @@ class Lazify(Transform):
         return data_tree
 
 
-class LazifyIterator(TransformIterator):
+class LazifyIterator(TransformIterator[Lazify]):
     #: Accumulation of the values yielded by the tree iterator. If it generates
     #: a non-dict value, then stores `None`.
     accumulated_value: dict[Key, DataTree] | None

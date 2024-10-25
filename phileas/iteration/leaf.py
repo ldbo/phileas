@@ -60,7 +60,7 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
         return self.value[key]  # type: ignore[index]
 
 
-class LiteralIterator(TreeIterator):
+class LiteralIterator(TreeIterator[IterationLiteral]):
     def _current_value(self) -> DataTree:
         return self.tree.value
 
@@ -108,7 +108,7 @@ class GeneratorWrapper(IterationLeaf):
         return self
 
 
-class GeneratorWrapperIterator(TreeIterator):
+class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
     generator: Iterator[DataTree]
     last_position: int
 
@@ -322,7 +322,7 @@ class Sequence(IterationLeaf):
         return self.elements[key]  # type: ignore[index]
 
 
-class SequenceIterator(TreeIterator):
+class SequenceIterator(TreeIterator[Sequence]):
     def _current_value(self) -> DataTree:
         return self.tree.elements[self.position]
 
