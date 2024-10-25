@@ -18,7 +18,7 @@ from ..utility import Sentinel
 DataLiteral = typing.Union[None, bool, str, int, float, "_NoDefault"]
 
 #: Dictionary keys
-Key = None | bool | str | int | float
+Key = bool | str | int | float
 
 #: A data tree consists of literal leaves, and dictionary or list nodes
 DataTree = DataLiteral | dict[Key, "DataTree"] | list["DataTree"]
