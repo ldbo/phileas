@@ -119,9 +119,6 @@ def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
         | st.dictionaries(data_literal, children, min_size=1, max_size=4)
     )
 
-    if Node is Union:
-        return Node(children, lazy=False, no_default_policy=NoDefaultPolicy.SENTINEL)
-
     return Node(children, lazy=False)
 
 
@@ -437,14 +434,13 @@ class TestIteration(unittest.TestCase):
                 1: IntegerRange(1, 2, default_value=10),
                 2: IntegerRange(1, 2),
             },
-            no_default_policy=NoDefaultPolicy.SKIP,
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10},
-            {0: 2, 1: 10},
-            {0: 10, 1: 1},
-            {0: 10, 1: 2},
+            {0: 1, 1: 10, 2: 1},
+            {0: 2, 1: 10, 2: 1},
+            {0: 10, 1: 1, 2: 1},
+            {0: 10, 1: 2, 2: 1},
             {0: 10, 1: 10, 2: 1},
             {0: 10, 1: 10, 2: 2},
         ]
@@ -459,15 +455,14 @@ class TestIteration(unittest.TestCase):
                 2: IntegerRange(1, 2),
             },
             lazy=True,
-            no_default_policy=NoDefaultPolicy.SKIP,
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10},
+            {0: 1, 1: 10, 2: 1},
             {0: 2},
             {0: 10, 1: 1},
             {1: 2},
-            {1: 10, 2: 1},
+            {1: 10},
             {2: 2},
         ]
 

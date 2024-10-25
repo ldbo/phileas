@@ -15,7 +15,6 @@ from .base import (
     IterationLeaf,
     IterationTree,
     Key,
-    ListIterator,
     NoDefaultError,
     NoDefaultPolicy,
     PseudoDataTree,
@@ -36,7 +35,7 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
     value: DT
 
     def __iter__(self) -> TreeIterator:
-        return ListIterator([self.value])
+        return LiteralIterator(self)
 
     def __len__(self) -> int:
         return 1
@@ -61,11 +60,16 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
         return self.value[key]  # type: ignore[index]
 
 
+class LiteralIterator(TreeIterator):
+    def _current_value(self) -> DataTree:
+        return self.tree.value
+
+
 @dataclass(frozen=True)
 class GeneratorWrapper(IterationLeaf):
     """
     Wrapper around a generator function, which can be used in order not to have
-    to implement an new iteration leave, and its iterator. Not that only forward
+    to implement a new iteration leave, and its iterator. Not that only forward
     iteration is supported by the node.
     """
 
@@ -79,7 +83,7 @@ class GeneratorWrapper(IterationLeaf):
         if self.size is not None:
             return self.size
 
-        raise ValueError("Generator wrapper does not have a size.")
+        raise TypeError("Generator wrapper does not have a size.")
 
     def default(
         self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
@@ -105,15 +109,23 @@ class GeneratorWrapper(IterationLeaf):
 
 
 class GeneratorWrapperIterator(TreeIterator):
-    tree: GeneratorWrapper
     generator: Iterator[DataTree]
+    last_position: int
 
     def __init__(self, tree: GeneratorWrapper):
-        super().__init__()
-        self.tree = tree
-        self.reset()
+        super().__init__(tree)
+        self.last_position = -1
+        self.generator = self.tree.generator_function(
+            *self.tree.args, **self.tree.kwargs
+        )
 
-    def __next__(self) -> DataTree:
+    def _current_value(self) -> DataTree:
+        if self.position != self.last_position + 1:
+            raise Exception(
+                "GeneratorWrapperIterator can only be used for continuous iteration."
+            )
+
+        self.last_position = self.position
         return next(self.generator)
 
     def reset(self):
@@ -192,7 +204,8 @@ class LinearRange(NumericRange[float]):
                 for step in range(self.steps)
             ]
 
-        return ListIterator(sequence)
+        # TBD do we want to use a SequenceIterator for those?
+        return SequenceIterator(Sequence(sequence, default_value=self.default_value))
 
     def __len__(self) -> int:
         return self.steps
@@ -226,7 +239,7 @@ class GeometricRange(NumericRange[float]):
 
             sequence = [sign * start * (ratio**e) for e in range(self.steps)]
 
-        return ListIterator(sequence)
+        return SequenceIterator(Sequence(sequence, default_value=self.default_value))
 
     def __len__(self) -> int:
         return self.steps
@@ -254,7 +267,7 @@ class IntegerRange(NumericRange[int]):
             positions = range(1 + abs(self.end - self.start) // self.step)
             sequence = [self.start + direction * m * self.step for m in positions]
 
-        return ListIterator(sequence)
+        return SequenceIterator(Sequence(sequence, default_value=self.default_value))
 
     def __len__(self) -> int:
         return 1 + abs(self.end - self.start) // self.step
@@ -277,7 +290,7 @@ class Sequence(IterationLeaf):
             raise ValueError("Empty elements are forbidden.")
 
     def __iter__(self) -> TreeIterator:
-        return ListIterator(self.elements)
+        return SequenceIterator(self)
 
     def __len__(self) -> int:
         return len(self.elements)
@@ -307,6 +320,11 @@ class Sequence(IterationLeaf):
         compromise.
         """
         return self.elements[key]  # type: ignore[index]
+
+
+class SequenceIterator(TreeIterator):
+    def _current_value(self) -> DataTree:
+        return self.tree.elements[self.position]
 
 
 ## Random leaves
@@ -423,7 +441,7 @@ class NumpyRNGIterator(TreeIterator):
         self.reset()
 
     def reset(self):
-        if self.forward:
+        if self.__forward:
             self.position = -1
         elif self.size is not None:
             self.position = self.size
@@ -431,7 +449,7 @@ class NumpyRNGIterator(TreeIterator):
             raise ValueError("Cannot reset a reversed unsized iterator.")
 
     def __next__(self) -> DataTree:
-        if self.forward:
+        if self.__forward:
             self.position += 1
 
             if self.size is not None and self.position >= self.size:

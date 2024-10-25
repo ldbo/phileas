@@ -5,9 +5,8 @@ iteration (data tree, pseudo data tree and iteration tree).
 
 import typing
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Iterator
+from typing import Callable, Generic, Iterator, TypeVar
 
 from ..utility import Sentinel
 
@@ -48,28 +47,82 @@ PseudoDataTree = (
 ### Iteration ###
 
 
+class DefaultIndex(Sentinel):
+    """
+    Index of the default value of an iteration tree.
+    """
+
+    pass
+
+
 class TreeIterator(ABC):
     """
-    Iteration tree iterator. Compared to a usual iterator, it supports forward
-    and backward iteration, and is endlessly usable. This means that, whenever
-    it is "exhausted" (`__next__()` raise `StopIteration`), it can either be
-    reset to its starting position with `reset()`, or its iteration direction
-    can be switched using `reverse()`.
+    Iteration tree iterator.
+
+    Compared to a usual iterator, it supports forward and backward iteration,
+    and is endlessly usable. This means that, whenever it is "exhausted"
+    (`__next__()` raises `StopIteration`), it can either be reset to its
+    starting position with `reset()`, or its iteration direction can be
+    switched using `reverse()`.
+
+    Additionally, it supports random access with the `__getitem__` method, which
+    uses `update` under the hood.
     """
 
-    #: Current iteration direction of the iterator.
-    forward: bool
+    #: Reference to the tree being iterated over.
+    tree: "IterationTree"
 
-    def __init__(self) -> None:
-        self.forward = True
+    #: Current iteration direction of the iterator.
+    #:
+    #: This attribute is managed by `TreeIterator`, and should thus not be
+    #: modified by sub-classes. However, it can be read.
+    __forward: bool
+
+    #: Position of the last value that was yielded. Valid values start at -1
+    #: (backward-exhausted iterator, or forward iteration start), and go up to
+    #: `size`(forward-exhausted iterator, or backward iteration start).
+    #:
+    #: It can be directly modified by `update`.
+    #:
+    #: This attribute is managed by `TreeIterator`, thus it must thus not be
+    #: modified by sub-classes. However, it can be read.
+    position: int
+
+    def __init__(self, tree: "IterationTree") -> None:
+        self.__forward = True
+        self.position = -1
+        self.tree = tree
 
     def __iter__(self) -> Iterator[DataTree]:
         return self
 
+    def reset(self):
+        """
+        Reset the internal state of the iterator, so that its next value will be
+        the first iterated value in the current direction. It takes into
+        account the value of forward, going either to the start or the end of
+        the iterated collection.
+        """
+        if self.__forward:
+            self.position = -1
+        else:
+            try:
+                self.position = len(self.tree)
+            except TypeError as error:
+                raise Exception(
+                    "Cannot backward-reset an infinite iterator."
+                ) from error
+
+    def is_forward(self) -> bool:
+        """
+        Returns whether the iterator is going forward or not.
+        """
+        return self.__forward
+
     def reverse(self):
         """
         Reverse the iteration direction of the iterator, but stay at the same
-        position. Thus, if `it` is any `TreeIterator`, the following behavior
+        position. Thus, if `it` is any `TreeIterator`, the following behaviour
         is expected:
 
         >>> it.reset()
@@ -85,65 +138,60 @@ class TreeIterator(ABC):
         >>> it.reset()
 
         """
-        self.forward = not self.forward
+        self.__forward = not self.__forward
+
+    def update(self, position: int):
+        """
+        Update the position of the iterator to any supported position.
+
+        If an invalid position is requested, an `IndexError` is raised, and the
+        state of the iterator remains unchanged.
+        """
+        if position < -1:
+            raise Exception("Cannot update to a position < -1.")
+        try:
+            if position > len(self.tree):
+                raise Exception("Cannot update to a position > size.")
+        except TypeError:
+            # There is no upper bound to the indices of an infinite tree
+            pass
+
+        self.position = position
+
+    def __getitem__(self, position: int | DefaultIndex) -> DataTree:
+        """
+        Return the element at `position`. If it is a `DefaultIndex`, return the
+        default value of the iteration tree.
+        """
+        if isinstance(position, DefaultIndex):
+            return self.tree.default(NoDefaultPolicy.ERROR)
+
+        self.update(position)
+        return self._current_value()
 
     @abstractmethod
-    def reset(self):
+    def _current_value(self) -> DataTree:
         """
-        Reset the internal state of the iterator, so that its next value will be
-        the first iterated value in the current direction. It takes into
-        account the value of forward, going either to the start or the end of
-        the iterated collection.
+        Return the value at `position`.
+
+        It is assumed that whenever it is called, the return value is given to
+        the user.
         """
         raise NotImplementedError()
 
-    @abstractmethod
     def __next__(self) -> DataTree:
         """
-        Return the next iterated value in the current iteration direction.
+        Return the next value in the current iteration direction.
         """
-        raise NotImplementedError()
-
-
-@dataclass
-class ListIterator(TreeIterator):
-    """
-    Iterator over a list of data trees.
-
-    It is to be replaced by dedicated iterators dedicated to each concrete
-    numeric range, to reduce memory use.
-    """
-
-    #: Values being iterated
-    sequence: list[DataTree]
-
-    #: Position of the last yielded element.
-    position: int = field(init=False)
-
-    #: Cached length of the sequence
-    length: int = field(init=False)
-
-    def __post_init__(self):
-        super().__init__()
-        self.length = len(self.sequence)
-        self.reset()
-
-    def reset(self):
-        if self.forward:
-            self.position = -1
-        else:
-            self.position = self.length
-
-    def reverse(self):
-        super().reverse()
-
-    def __next__(self) -> DataTree:
-        if self.forward:
+        if self.__forward:
             self.position += 1
 
-            if self.position >= self.length:
-                self.position = self.length
-                raise StopIteration
+            try:
+                if self.position >= len(self.tree):
+                    self.position = len(self.tree)
+                    raise StopIteration
+            except TypeError:
+                pass
         else:
             self.position -= 1
 
@@ -151,7 +199,7 @@ class ListIterator(TreeIterator):
                 self.position = -1
                 raise StopIteration
 
-        return self.sequence[self.position]
+        return self._current_value()
 
 
 ### Indexing ###
