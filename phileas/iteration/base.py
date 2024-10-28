@@ -169,12 +169,13 @@ class TreeIterator(ABC, Generic[T]):
     def __getitem__(self, position: int | DefaultIndex) -> DataTree:
         """
         Return the element at `position`. If it is a `DefaultIndex`, return the
-        default value of the iteration tree.
+        default value of the iteration tree, using the
+        `NoDefaultPolicy.FIRST_ELEMENT policy`.
 
         Only an `IndexError` can be raised by this method.
         """
         if isinstance(position, DefaultIndex):
-            return self.tree.default(NoDefaultPolicy.ERROR)
+            return self.tree.default(NoDefaultPolicy.FIRST_ELEMENT)
 
         self.update(position)
         return self._current_value()
@@ -249,6 +250,9 @@ class NoDefaultPolicy(Enum):
     #: Note that this is not supported by iteration method nodes with list
     #: children.
     SKIP = "SKIP"
+
+    #: Return the first element of iteration leaves without a default value.
+    FIRST_ELEMENT = "FIRST_ELEMENT"
 
 
 class NoDefaultError(Exception):
