@@ -156,10 +156,10 @@ class TreeIterator(ABC, Generic[T]):
         state of the iterator remains unchanged.
         """
         if position < -1:
-            raise Exception("Cannot update to a position < -1.")
+            raise IndexError("Cannot update to a position < -1.")
         try:
             if position > len(self.tree):
-                raise Exception("Cannot update to a position > size.")
+                raise IndexError("Cannot update to a position > size.")
         except TypeError:
             # There is no upper bound to the indices of an infinite tree
             pass
@@ -170,6 +170,8 @@ class TreeIterator(ABC, Generic[T]):
         """
         Return the element at `position`. If it is a `DefaultIndex`, return the
         default value of the iteration tree.
+
+        Only an `IndexError` can be raised by this method.
         """
         if isinstance(position, DefaultIndex):
             return self.tree.default(NoDefaultPolicy.ERROR)
