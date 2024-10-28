@@ -94,21 +94,26 @@ class IterationMethod(IterationTree):
                 key: value.to_pseudo_data_tree() for key, value in self.children.items()
             }
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
         # List children
         if isinstance(self.children, list):
-            if no_default_policy == NoDefaultPolicy.SKIP:
-                msg = "NoDefaultPolicy.SKIP is not supported by iteration "
-                msg += "methods with list children."
-                raise TypeError(msg)
-
             default_list: list[DataTree | _NoDefault] = [None] * len(self.children)
             for position, child_tree in enumerate(self.children):
                 error: None | NoDefaultError = None
                 try:
-                    default_list[position] = child_tree.default(no_default_policy)
+                    value = child_tree.default(no_default_policy)
+
+                    if (
+                        value == no_default
+                        and no_default_policy == NoDefaultPolicy.SKIP
+                    ):
+                        msg = (
+                            "NoDefaultPolicy.SKIP is not supported for "
+                            " iteration methods with list children."
+                        )
+                        error = NoDefaultError(msg, [])
+
+                    default_list[position] = value
                 except NoDefaultError as err:
                     error = NoDefaultError(err.args[0], [position] + err.path)
 
@@ -241,7 +246,7 @@ class IterationMethodIterator(TreeIterator[T]):
         else:  # isinstance(tree.children, dict)
             # An exception will be raised if comparison is not possible
             assert isinstance(tree.children, dict)
-            self.keys = list(sorted(tree.children.keys()))
+            self.keys = sorted(tree.children.keys())
 
         self.iterators = [iter(tree.children[key]) for key in self.keys]  # type: ignore[index]
         self.positions = [it.position for it in self.iterators]
@@ -477,9 +482,7 @@ class Transform(IterationTree):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self.child.to_pseudo_data_tree()
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
         error: None | NoDefaultError = None
         try:
             # This is the only statement that can raise an exception.
@@ -487,7 +490,7 @@ class Transform(IterationTree):
 
             # We keep those lines here so that `child_default` is explicitly
             # bound.
-            if isinstance(child_default, _NoDefault):
+            if child_default == no_default:
                 return no_default
 
             return self.transform(child_default)

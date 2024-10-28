@@ -42,9 +42,7 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self.value  # type: ignore[return-value]
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
         return self.value
 
     def __getitem__(self, key: Key) -> DataTree:  # type: ignore[override]
@@ -84,18 +82,11 @@ class GeneratorWrapper(IterationLeaf):
 
         raise TypeError("Generator wrapper does not have a size.")
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
-        if self.default_value != no_default:
-            return self.default_value
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
+        if self.default_value == no_default:
+            raise NoDefaultError.build_from(self)
 
-        if no_default_policy == NoDefaultPolicy.ERROR:
-            raise NoDefaultError("No default value.", [])
-        elif no_default_policy == NoDefaultPolicy.SENTINEL:
-            return no_default
-        else:  # no_default_policy == NoDefaultPolicy.SKIP
-            return no_default
+        return self.default_value
 
     def __iter__(self) -> TreeIterator:
         return GeneratorWrapperIterator(self)
@@ -158,16 +149,9 @@ class NumericRange(IterationLeaf, Generic[T]):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
         if isinstance(self.default_value, _NoDefault):
-            if no_default_policy == NoDefaultPolicy.ERROR:
-                raise NoDefaultError("Numeric range without a default value", [])
-            elif no_default_policy == NoDefaultPolicy.SENTINEL:
-                return no_default
-            else:  # no_default_policy == NoDefaultPolicy.SKIP:
-                return no_default
+            raise NoDefaultError.build_from(self)
 
         return self.default_value
 
@@ -291,16 +275,9 @@ class Sequence(IterationLeaf):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
-        if isinstance(self.default_value, _NoDefault):
-            if no_default_policy == NoDefaultPolicy.ERROR:
-                raise NoDefaultError("Sequence without a default value", [])
-            elif no_default_policy == NoDefaultPolicy.SENTINEL:
-                return no_default
-            else:  # no_default_policy == NoDefaultPolicy.SKIP:
-                return no_default
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
+        if self.default_value == no_default:
+            raise NoDefaultError.build_from(self)
 
         return self.default_value
 
@@ -395,18 +372,11 @@ class NumpyRNG(RandomIterationLeaf):
     def __iter__(self) -> TreeIterator:
         return NumpyRNGIterator(self)
 
-    def default(
-        self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
-    ) -> DataTree | _NoDefault:
-        if self.default_value != no_default:
-            return self.default_value
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
+        if self.default_value == no_default:
+            raise NoDefaultError.build_from(self)
 
-        if no_default_policy == NoDefaultPolicy.ERROR:
-            raise NoDefaultError("Numpy RNG does not have a default value.", [])
-        elif no_default_policy == NoDefaultPolicy.SENTINEL:
-            return no_default
-        else:  # no_default_policy == NoDefaultPolicy.SKIP:
-            return no_default
+        return self.default_value
 
 
 @dataclass

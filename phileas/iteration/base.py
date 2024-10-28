@@ -264,9 +264,13 @@ class NoDefaultError(Exception):
     #: Path of a child without a default value.
     path: ChildPath
 
-    def __init__(self, message: str, path: ChildPath) -> None:
+    def __init__(self, message: str | None, path: ChildPath) -> None:
         super().__init__(message)
         self.path = path
+
+    @staticmethod
+    def build_from(tree: "IterationTree") -> "NoDefaultError":
+        return NoDefaultError(f"{tree.__class__.__name__} without a default value.", [])
 
     def __str__(self):
         path_msg = (
@@ -332,13 +336,31 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
-    @abstractmethod
     def default(
         self, no_default_policy: NoDefaultPolicy = NoDefaultPolicy.ERROR
     ) -> DataTree | _NoDefault:
         """
         Returns a default data tree. If the tree does not have a default value,
         follows the behavior dictated by `no_default_policy`.
+        """
+        try:
+            return self._default(no_default_policy)
+        except NoDefaultError:
+            if no_default_policy == NoDefaultPolicy.ERROR:
+                raise
+            elif no_default_policy == NoDefaultPolicy.SENTINEL:
+                return no_default
+            elif no_default_policy == NoDefaultPolicy.FIRST_ELEMENT:
+                return next(iter(self))
+            else:
+                assert no_default_policy == NoDefaultPolicy.SKIP
+                return no_default
+
+    @abstractmethod
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
+        """
+        Concrete implementation of `default()`. It returns the default value,
+        or raises a `NoDefaultError` if it is not defined.
         """
         raise NotImplementedError()
 
