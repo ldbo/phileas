@@ -76,3 +76,25 @@ def generate_seeds(tree: IterationTree, salt: DataTree | None = None) -> Iterati
             return tree
 
     return tree.depth_first_modify(_generate_seed)
+
+
+def recursive_union(tree1: DataTree, tree2: DataTree) -> DataTree:
+    """
+    Return the recursive union of two datatrees. If any of those is not a
+    dictionary, it returns the latter. Otherwise, it recursively applies the
+    union operator of dictionaries.
+    """
+    if not isinstance(tree1, dict) or not isinstance(tree2, dict):
+        return tree2
+
+    union = tree1.copy()
+    keys1 = set(tree1.keys())
+    keys2 = set(tree2.keys())
+
+    for key in keys2 - keys1:
+        union[key] = tree2[key]
+
+    for key in keys1 & keys2:
+        union[key] = recursive_union(tree1[key], tree2[key])
+
+    return union

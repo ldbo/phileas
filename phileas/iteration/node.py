@@ -12,6 +12,8 @@ from itertools import accumulate
 from operator import mul
 from typing import Callable, Sequence, TypeVar
 
+from phileas.iteration import utility
+
 from .base import (
     ChildPath,
     DataTree,
@@ -579,9 +581,16 @@ class Accumulator(Transform):
     Transform node that accumulates its inputs, as a kind of *unlazifying*
     transform:
       - if its successive inputs are dictionaries, merge them using the union
-        operator, and return the results;
-      - else, leave its inputs untouched.
+        operator (recursively or not), and return the results;
+      - otherwise, leave its inputs untouched.
     """
+
+    #: Specify if the accumulation must be done recursively or not. For example,
+    #: accumulating values `{"a": 1, "b": {"ba": 1}}` and `{"a": 2, "b":
+    #: {"bb": 2}}` recursively will return `{"a": 2, "b": {ba": 1, "bb": 2}}`,
+    #: whereas doing it non-recursively will return ``{"a": 2, "b":
+    #: {"bb": 2}}`.
+    recursive: bool = False
 
     #: Start value of the accumulator, which must either be a dictionary, or
     #: `None`.
@@ -609,7 +618,12 @@ class AccumulatorIterator(TransformIterator[Accumulator]):
         data_tree = super()._current_value()
         if isinstance(data_tree, dict):
             if isinstance(self.last_value, dict):
-                self.last_value |= data_tree
+                if self.tree.recursive:
+                    new_tree = utility.recursive_union(self.last_value, data_tree)
+                    assert isinstance(new_tree, dict)
+                    self.last_value = new_tree
+                else:
+                    self.last_value |= data_tree
             else:
                 self.last_value = data_tree
 
