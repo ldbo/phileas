@@ -3,6 +3,7 @@ import unittest
 from itertools import product
 
 import hypothesis
+import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -25,6 +26,7 @@ from phileas.iteration import (
     Transform,
     Union,
 )
+from phileas.iteration.leaf import NumpyRNG, Seed
 
 ### Hypothesis strategies ###
 
@@ -91,6 +93,19 @@ def sequence(draw):
     return Sequence(seq, default_value=1)
 
 
+@st.composite
+def random_leaf(draw):
+    seed = Seed([], draw(data_tree))
+    size = draw(st.integers(1, 3))
+    default = draw(st.one_of(st.none(), data_tree))
+    return NumpyRNG(
+        seed=seed,
+        size=size,
+        distribution=np.random.Generator.uniform,
+        default_value=default,
+    )
+
+
 iteration_leaf = st.one_of(
     iteration_literal(),
     numeric_range(),
@@ -98,6 +113,7 @@ iteration_leaf = st.one_of(
     geometric_range(),
     integer_range(),
     sequence(),
+    random_leaf(),
 )
 
 iterable_iteration_leaf = st.one_of(
@@ -106,6 +122,7 @@ iterable_iteration_leaf = st.one_of(
     geometric_range(),
     integer_range(),
     sequence(),
+    random_leaf(),
 )
 
 ## Iteration nodes ##
@@ -312,7 +329,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_cartesian_product_lazy_iteration(self):
+    def test_cartesian_product_lazy_iteration_explicit(self):
         u = CartesianProduct(
             {
                 0: IntegerRange(1, 2, default_value=10),
@@ -335,7 +352,27 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_cartesian_product_snake_iteration(self):
+    @given(st.lists(linear_range(), min_size=1, max_size=5))
+    def test_cartesian_product_snake_has_same_elements_as_non_snake(
+        self, children: list[IterationTree]
+    ):
+        cp_snake = CartesianProduct(children, snake=True)
+        cp_non_snake = CartesianProduct(children, snake=False)
+
+        snake_list = list(cp_snake)
+        formatted_list = "\n".join(f" - {s}" for s in snake_list)
+        hypothesis.note(f"Snake list:\n{formatted_list}")
+
+        non_snake_list = list(cp_non_snake)
+        formatted_list = "\n".join(f" - {s}" for s in non_snake_list)
+        hypothesis.note(f"Non-snake list:\n{formatted_list}")
+
+        self.assertEqual(
+            {frozenset(e) for e in snake_list},  # type: ignore[arg-type]
+            {frozenset(e) for e in non_snake_list},  # type: ignore[arg-type]
+        )
+
+    def test_cartesian_product_snake_iteration_explicit(self):
         tree = CartesianProduct(
             children={1: Sequence([1, 2, 3]), 2: Sequence(["a", "b", "c"])},
             lazy=False,
@@ -406,7 +443,22 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(non_lazy_list, acc_lazy_list)
 
-    def test_cartesian_product_lazy_snake_iteration(self):
+    @given(
+        st.dictionaries(key, sequence(), min_size=1, max_size=5),
+    )
+    def test_cartesian_product_lazy_snake_changes_elements_once_at_a_time(
+        self, children: dict[Key, IterationTree]
+    ):
+        cp = CartesianProduct(children, lazy=True, snake=True)
+        iterated_list = list(cp)
+        hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
+
+        sizes = list(map(len, iterated_list))  # type: ignore[arg-type]
+        expected_sizes = [len(children)] + [1] * (len(iterated_list) - 1)
+
+        self.assertEqual(sizes, expected_sizes)
+
+    def test_cartesian_product_lazy_snake_iteration_explicit(self):
         tree = CartesianProduct(
             children={1: Sequence([1, 2, 3]), 2: Sequence(["a", "b", "c"])},
             lazy=True,
