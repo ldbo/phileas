@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import unittest
 from itertools import product
 
@@ -27,6 +28,11 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.leaf import NumpyRNG, Seed
+
+# Some tests are close to the 200 ms limit after which hypothesis classifies
+# the test as an error, so increase it.
+hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=1))
+hypothesis.settings.load_profile("ci")
 
 ### Hypothesis strategies ###
 
