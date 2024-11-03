@@ -18,6 +18,8 @@ ipython = "^7"
 ipdb = "^0.13.13"
 pre-commit = "3.5"
 hypothesis = "^6.99.6"
+coverage = {version = ">=7.6", extras = ["toml"]}
+mypy = "^1.13.0"
 
 [tool.poetry.scripts]
 phileas = 'phileas.__main__:main'
@@ -28,3 +30,15 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.isort]
 profile = "black"
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "./test/",
+    "./tox",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "raise NotImplementedError()",
+]
