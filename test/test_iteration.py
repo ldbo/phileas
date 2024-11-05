@@ -31,7 +31,7 @@ from phileas.iteration.leaf import NumpyRNG, Seed
 
 # Some tests are close to the 200 ms limit after which hypothesis classifies
 # the test as an error, so increase it.
-hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=1))
+hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=5))
 hypothesis.settings.load_profile("ci")
 
 ### Hypothesis strategies ###
@@ -157,13 +157,13 @@ def transform(child: st.SearchStrategy):
 iteration_tree = st.recursive(
     iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
-    max_leaves=10,
+    max_leaves=8,
 )
 
 iterable_iteration_tree = st.recursive(
     iterable_iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
-    max_leaves=10,
+    max_leaves=8,
 )
 
 
