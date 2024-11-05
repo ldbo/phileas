@@ -8,8 +8,8 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
-if TYPE_CHECKING:
-    from _typeshed import Self
+if TYPE_CHECKING:  # pragma: no cover
+    from _typeshed import Self  # pragma: no cover
 else:
     Self = Any
 

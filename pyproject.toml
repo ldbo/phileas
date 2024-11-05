@@ -40,5 +40,6 @@ omit = [
 
 [tool.coverage.report]
 exclude_also = [
+    "pragma: no cover",
     "raise NotImplementedError()",
 ]

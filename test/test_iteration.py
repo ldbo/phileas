@@ -225,6 +225,14 @@ class TestIteration(unittest.TestCase):
         """
         del tree
 
+    @given(iterable_iteration_tree, st.integers(1, 3))
+    def test_reverse_changes_forward(self, tree: IterationTree, reverses: int):
+        iterator = iter(tree)
+        for _ in range(reverses):
+            iterator.reverse()
+
+        self.assertEqual(iterator.is_forward(), reverses % 2 == 0)
+
     @given(iterable_iteration_tree)
     def test_len_consistent_with_iterate(self, tree: IterationTree):
         try:
@@ -558,3 +566,10 @@ class TestIteration(unittest.TestCase):
         t = CartesianProduct({"a": LinearRange(1, 2)})
         with self.assertRaises(iteration.NoDefaultError):
             t.default(no_default_policy=NoDefaultPolicy.ERROR)
+
+    def test_no_default_policy_first_element(self):
+        tree = CartesianProduct({"a": LinearRange(1, 2)})
+        value = tree.default(NoDefaultPolicy.FIRST_ELEMENT)
+        first_value = next(iter(tree))
+
+        self.assertEqual(value, first_value)
