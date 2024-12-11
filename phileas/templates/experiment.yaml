@@ -1,0 +1,132 @@
+{% if not no_explanation %}
+# This file contains the information required to do an actual experiment, that
+# is:
+#  - first of all, you can write here (almost) everything that you will be happy
+#    to find when, six months from now, you're wondering what the heck this
+#    experiment was about, and if you had finally used 5 GSample/s or 100
+#    MSample/s.
+#  - Then, the list of instruments used,
+#  - their configurations,
+#  - and how they are connected.
+
+# This entry is not required, but it is a good idea to fill it anyway. However,
+#  1. it is definitely the first place to look at when trying to find out what
+#     this is all about;
+#  2. and it is used by the boilerplate script, in order to properly name the
+#     save folder. For this reason, `chip`, `target` and `name` are required,
+#     and must be strings that your filesystem support as file names.
+{% endif %}
+description:
+  {% if not no_explanation %}
+  # The name of the chip that is used in this experiment.
+  {% endif %}
+  chip: <manufacturer_model_package>
+  {% if not no_explanation %}
+  # What are you focusing on in this chip?
+  {% endif %}
+  target: <part_of_the_chip>
+  {% if not no_explanation %}
+  # A name you give to the kind of measurements you are doing.
+  {% endif %}
+  name: <measurements>
+  {% if not no_explanation %}
+  # Fill in any long text that describes
+  #   - the purpose of this experiment,
+  #   - the experimental setup,
+  #   - what is to be done in the acquisition script,
+  #   - what you expect,
+  #   - and any other useful information.
+  {% endif %}
+  info: |
+    The goal of this experiment is to <...>
+
+    To do so, X is plugged to Y and Y to Z.
+
+    X is configured to do <...> and Y measures <...>.
+
+{% if not no_explanation %}
+# Each entry containing the `interface` key represents an experiment instrument,
+# that is an instrument that can be configured by Phileas from the script. This
+# entry represents what the instrument *does* (e.g. it is a camera or an
+# oscilloscope, and we configure and connect it like that), and not what
+# it *is* (e.g. a specific kind of camera or oscilloscope).
+{% endif %}
+<experiment_instrument_name>:
+  {% if not no_explanation %}
+  # A loader gives access to the user to an instrument which has a given set of
+  # interfaces, defined in its `interfaces` attribute. So, in order to get a
+  # camera from your experiment bench, you must require an instrument which has
+  # the `camera` interface. Then, hope that whoever wrote the loaders that you
+  # are using followed the same convention as you (`camera`, and not `Camera`,
+  # `hd-camera` or anything else), and that there is only one bench instrument
+  # having the interface that you are requiring.
+  #
+  # You can use `python -m phileas list-loaders <experiment_config.py>` to find
+  # out what interfaces name you should require.
+  #
+  # If there are multiple instruments having the same interface, or if you want
+  # to be specific about the exact instrument you are using, you can use the
+  # `filter` entry.
+  {% endif %}
+  interface: <interface_name>
+  filter:
+    <attribute>: <required_value>
+
+  {% if not no_explanation %}
+  # Specify here how this instrument is connected to others.
+  {% endif %}
+  connections:
+    - from: <other_instrument.output>
+    {% if not no_explanation %}
+      # This is understood as `experiment_instrument_name.input`.
+    {% endif %}
+      to: <input>
+    {% if not no_explanation %}
+    # There is an implicit `from: experiment_instrument_name` here.
+    {% endif %}
+    - to: <yet_another_instrument>
+
+  {% if not no_explanation %}
+  # All the other entries (ie. not `interface`, `filter` or `connections`) are
+  # automatically given to the `configure` method of the loader.
+  #
+  # You can use them to configure the instrument. Additionally, if the loader is
+  # properly implemented and ignores irrelevant entries without complaining, you
+  # can add here any information you think is useful.
+  {% endif %}
+  <config_parameter_1>: 1
+  <config_parameter_2>: !range
+    start: <start_value>
+    end: <end_value>
+    steps: <number_of_steps>
+    # resolution: <maximum_guaranteed_spacing>
+    default: <default_value>
+  config_value_3: !sequence
+    values: [<value1>, <value2>, <...>]
+    default: <default_value>
+
+{% if not no_explanation %}
+# You can also specify the connections here.
+{% endif %}
+connections:
+  - from: <instrument_a.output>
+    to: <intrument_b>
+{% if not no_example %}
+
+# Example experiment instruments
+
+microscope_camera:
+  interface: camera
+  frame_rate_hz: 10
+
+sample_positioner:
+  interface: motor
+  filter:
+    moves: sample
+
+  depth_mm: !range
+    start: 0
+    end: 1
+    resolution: 1.0e-3
+    default: 0
+{% endif %}

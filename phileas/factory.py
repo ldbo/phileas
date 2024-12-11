@@ -1,5 +1,4 @@
 import inspect
-import logging
 import operator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -13,8 +12,7 @@ import graphviz  # type: ignore[import]
 
 from . import parsing
 from .iteration import DataTree, IterationTree, Key
-
-logger = logging.getLogger("phileas")
+from .logging import logger
 
 ### Loaders ###
 
@@ -162,7 +160,7 @@ def _add_loader(
 
     name = loader.name
     if name in loaders:
-        logging.warning(f"Overwriting the loader {name}")
+        logger.warning(f"Overwriting the loader {name}")
 
     loaders[name] = loader
 
@@ -200,7 +198,7 @@ def register_default_loader(
         name = loader[0]
         interfaces = loader[1]
 
-    logging.debug(f"Register default loader {name} for interfaces {interfaces}")
+    logger.debug(f"Register default loader {name} for interfaces {interfaces}")
     _add_loader(_DEFAULT_LOADERS, loader)
 
 

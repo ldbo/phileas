@@ -1,0 +1,47 @@
+{% if not no_explanation %}
+# This file lists all the instruments (ie. things that can be automatically
+# configured by Phileas) available on the bench.
+#
+# Each of the entries represents a single instrument. The values surrounded by
+# angle brackets must be filled.
+#
+# You can choose the name of the entry that you prefer, as it is not internally
+# used.
+{% endif %}
+<bench_instrument_name>:
+  {% if not no_explanation %}
+  # The instrument requires a loader, which is usually defined in
+  # `experiment_config.py`. Enter below the name of the loader to use for this
+  # instrument, which is the `name` attribute of the corresponding `Loader`
+  # sub-class.
+  #
+  # Alternatively, you can use `python -m phileas list-loaders
+  # experiment_config.py` to get access to the compilation of the available
+  # loaders.
+  {% endif %}
+  loader: <loader_name>
+  {% if not no_explanation %}
+
+  # Now, give all the arguments expected by the `initiate_connection` method of
+  # the loader. If it is properly documented, you can find them by using the
+  # `list-loaders` utility, or by having a look at the `experiment_config.py`
+  # file. Otherwise, sorry, you're gonna have to read the code that someone
+  # else wrote, probably in a hurry.
+  {% endif %}
+  <arg1>: <value1>
+  <arg2>: <value2>
+{% if not no_example %}
+
+# Example bench instruments
+
+fake_camera:
+  loader: fake_manufacturer_fake_model
+  ip: 192.168.1.12
+  pixel_pitch_um: 15
+
+fake_uart_device:
+  loader: fake_manufacturer_fake_uart_model
+  device: /dev/ttyUSB12
+  baudrate: 115200
+  address: 1
+{% endif %}

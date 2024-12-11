@@ -72,7 +72,9 @@
    - `!range`, which is parsed to a `iteration.NumericRange` (or a subclass),
      and represents a continuous range of numbers;
    - `!sequence` is parsed to a `iteration.Sequence`, and represents a
-     sequence of values.
+     sequence of values;
+   - `!random` is parsed to a `iteration.NumpyRNG`, and represents a collection
+     of pseudo-random number.
  - To know the exact supported syntax for the custom YAML types, see the
    `parsing` module, which is responsible for parsing a YAML file into an
    `iteration.IterationTree`. A typical example is the following:
@@ -86,6 +88,13 @@ time: !sequence [0.15, 0.20, 0.45]
 power: !sequence
   elements: [1, 2, 5]
   default: 1
+voltage: !random
+  distribution: uniform
+  parameters:
+    low: 12
+    high: 13
+  size: 5
+  default: 0
  ```
 
  - In practice, you use an `ExperimentFactory` to parse the experiment
@@ -182,6 +191,12 @@ files:
 - Adding dependencies can be done using `poetry add`. Before committing the
   changes that have been made to `pyproject.toml`, you should rebuild the lock
   file, using `poetry lock`. Then, `poetry.lock` should be committed as well.
+- Pre-commit hooks are managed by [pre-commmit](https://pre-commit.com/), which
+  is a developer dependency. To use them, call `pre-commit install` from the
+  project virtual environment.
+
+## Tests
+
 - Test files are stored in the `test` module. You can use `unittest` to
   automatically discover and run them, using for example `python -m unittest`
   from the root of the repository.
@@ -190,6 +205,11 @@ files:
 - Test `TestFunctional1`, and the associated `functional_1_
   {config.py,experiment.yaml,bench.yaml}` configuration files are a good
   example to start using Phileas.
-- Pre-commit hooks are managed by [pre-commmit](https://pre-commit.com/), which
-  is a developer dependency. To use them, call `pre-commit install` from the
-  project virtual environment.
+- You can use [`tox`](https://tox.wik) to run unit tests and check types for
+  different Python versions. The easiest way to set your environment up is to
+  use [`uv`](https://docs.astral.sh/uv) to manage Python versions, and `tox-uv`
+  to signal `tox` to use it. Once `uv` is installed, you can install it with
+  `uv tool install tox --with tox-uv`, and run everything with `tox`.
+- `tox` is configured using `tox.ini`. It runs the unit tests with `unittest`,
+  and check types with `mypy`, and then produces an HTML coverage report stored
+  at `./htmlcov` using `coverage`.
