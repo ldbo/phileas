@@ -26,4 +26,14 @@
 
 # 0.3.1
 
- - Allow iteration nodes to control the iteration order.
+- Allow iteration nodes to control the iteration order.
+
+# 0.4
+
+- Add support for random iteration.
+- Iteration is now random-access based.
+- Add template generation to ease starting up a new project.
+- Add iteration.restrict_leaves_sizes, which reduces the size of iteration
+  leaves, typically used to verify that a configuration is valid.
+- Cartesian product iteration is now valid for all iteration leaves sizes.
+- Add tox support for testing across different python versions.
