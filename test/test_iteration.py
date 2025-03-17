@@ -28,6 +28,7 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.leaf import NumpyRNG, Seed
+from phileas.iteration.utility import flatten_datatree
 
 # Some tests are close to the 200 ms limit after which hypothesis classifies
 # the test as an error, so increase it.
@@ -573,3 +574,15 @@ class TestIteration(unittest.TestCase):
         first_value = next(iter(tree))
 
         self.assertEqual(value, first_value)
+
+    # Utilities
+    def test_flatten_datatree(self):
+        tree: DataTree = {"key1": {"key1-1": 1}, "key2": [1, 2], "key3": "value"}
+        expected_flat_tree = {
+            "key1.key1-1": 1,
+            "key2.0": 1,
+            "key2.1": 2,
+            "key3": "value",
+        }
+        flattened_tree = flatten_datatree(tree)
+        self.assertEqual(expected_flat_tree, flattened_tree)

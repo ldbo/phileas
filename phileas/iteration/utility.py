@@ -4,8 +4,16 @@ This module defines utility functions related to iteration.
 
 import dataclasses
 from enum import Enum
+from typing import Iterable
 
-from .base import ChildPath, DataTree, IterationLeaf, IterationTree
+from .base import (
+    ChildPath,
+    DataLiteral,
+    DataTree,
+    IterationLeaf,
+    IterationTree,
+    PseudoDataTree,
+)
 from .leaf import RandomIterationLeaf, Seed, Sequence
 
 
@@ -98,3 +106,48 @@ def recursive_union(tree1: DataTree, tree2: DataTree) -> DataTree:
         union[key] = recursive_union(tree1[key], tree2[key])
 
     return union
+
+
+def flatten_datatree(
+    tree: DataTree | PseudoDataTree, key_prefix: None | str = None, separator: str = "."
+) -> dict[str, DataLiteral | IterationLeaf] | DataLiteral | IterationLeaf:
+    """
+    Transform nested `dict`s and `list`s to a single-level dict. `DataLiteral`s
+    and `IterationLeaf`s are left unchanged, so that flatting a `DataTree`
+    returns a `DataTree`, and flattening a `PseudoDataTree` returns a
+    `PseudoDataTree`.
+
+    Keys are converted to `str`, and concatenated using the specified
+    `separator`. `list`s are considered as `int`-keyed `dict`s.
+
+    >>> tree = {
+    ...     "key1": {
+    ...         "key1-1": 1
+    ...     },
+    ...     "key2": [1, 2],
+    ...     "key3": "value"
+    ... }
+    >>> flatten_datatree(tree)
+    {'key1.key1-1': 1, 'key2.0': 1, 'key2.1': 2, 'key3': 'value'}
+    """
+    iterable: Iterable[tuple[DataLiteral, DataTree | PseudoDataTree]]
+    if isinstance(tree, dict):
+        iterable = tree.items()
+    elif isinstance(tree, list):
+        iterable = enumerate(tree)
+    else:
+        return tree
+
+    flat_content: dict[str, DataLiteral | IterationLeaf] = {}
+    for key, value in iterable:
+        flat_key = str(key)
+        if key_prefix is not None:
+            flat_key = f"{key_prefix}{separator}{flat_key}"
+
+        flat_value = flatten_datatree(value, key_prefix=flat_key)
+        if isinstance(flat_value, dict):
+            flat_content |= flat_value
+        else:  # flat_value is a DataLiteral or IterationLeaf
+            flat_content[flat_key] = flat_value
+
+    return flat_content
