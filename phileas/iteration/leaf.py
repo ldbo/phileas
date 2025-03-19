@@ -67,21 +67,27 @@ class LiteralIterator(TreeIterator[IterationLiteral]):
 class GeneratorWrapper(IterationLeaf):
     """
     Wrapper around a generator function, which can be used in order not to have
-    to implement a new iteration leave, and its iterator. Not that only forward
-    iteration is supported by the node.
+    to implement a new iteration leave, and its iterator. Note that only
+    continuous forward iteration is supported by the node.
     """
 
     generator_function: Callable[..., Iterator[DataTree]]
     args: list = field(default_factory=list)
     kwargs: dict = field(default_factory=dict)
+
+    #: Size of the tree. If the generator can provide more elements, only the
+    #: first `size` ones are returned. If it cannot generate enough, a
+    #: `StopIteration` is raised during iteration. `None` represents an
+    #: infinite generator.
     size: int | None = None
+
     default_value: DataTree = field(default_factory=_NoDefault)
 
     def __len__(self) -> int:
-        if self.size is not None:
-            return self.size
+        if self.size is None:
+            raise InfiniteLength
 
-        raise TypeError("Generator wrapper does not have a size.")
+        return self.size
 
     def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
         if self.default_value == no_default:
@@ -99,6 +105,7 @@ class GeneratorWrapper(IterationLeaf):
 class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
     generator: Iterator[DataTree]
     last_position: int
+    size: int | None
 
     def __init__(self, tree: GeneratorWrapper):
         super().__init__(tree)
@@ -106,15 +113,32 @@ class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
         self.generator = self.tree.generator_function(
             *self.tree.args, **self.tree.kwargs
         )
+        self.size = tree.size
 
     def _current_value(self) -> DataTree:
         if self.position != self.last_position + 1:
-            raise Exception(
-                "GeneratorWrapperIterator can only be used for continuous iteration."
+            msg = (
+                f"{self.__class__.__name__} can only be used for "
+                "continuous forward iteration."
             )
+            raise Exception(msg)
+
+        if self.position == self.size:
+            raise StopIteration
 
         self.last_position = self.position
-        return next(self.generator)
+
+        value = None
+        try:
+            value = next(self.generator)
+        except StopIteration as e:
+            tree_size = self.size if self.size is not None else "infinite"
+            raise ValueError(
+                f"Generator exhausted at position {self.position}, whereas the "
+                f"tree size is {tree_size}."
+            ) from e
+
+        return value
 
     def reset(self):
         self.generator = self.tree.generator_function(

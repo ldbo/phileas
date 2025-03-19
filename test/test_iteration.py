@@ -1,10 +1,11 @@
 import dataclasses
 import datetime
+import itertools
 import unittest
-from itertools import product
+
+import numpy as np
 
 import hypothesis
-import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -13,8 +14,10 @@ from phileas.iteration import (
     Accumulator,
     CartesianProduct,
     DataTree,
+    DataLiteral,
     FunctionalTranform,
     GeometricRange,
+    GeneratorWrapper,
     IntegerRange,
     IterationLiteral,
     IterationMethod,
@@ -221,6 +224,42 @@ class TestIteration(unittest.TestCase):
     def test_sequence_iteration(self, sequence: Sequence):
         self.assertEqual(list(sequence), sequence.elements)
 
+    @given(st.lists(data_literal, max_size=10))
+    def test_generator_wrapper_finite(self, elements: list[DataLiteral]):
+        def generator_factory():
+            return (e for e in elements)
+
+        tree = GeneratorWrapper(generator_factory, size=len(elements))
+        self.assertEqual(list(tree), elements)
+
+    @given(st.integers(min_value=0, max_value=10))
+    def test_generator_wrapper_infinite(self, size: int):
+        def generator_factory():
+            return (e for e in itertools.count())
+
+        tree = GeneratorWrapper(generator_factory, size=size)
+        self.assertEqual(list(tree), list(range(size)))
+
+    @given(
+        st.integers(min_value=0, max_value=10),
+        st.one_of(st.none(), st.integers(min_value=1, max_value=10)),
+    )
+    def test_generator_wrapper_too_short(
+        self, generator_size: int, tree_additional_size: int | None
+    ):
+        def generator_factory():
+            return (e for e in range(generator_size))
+
+        tree_size = (
+            None
+            if tree_additional_size is None
+            else generator_size + tree_additional_size
+        )
+        tree = GeneratorWrapper(generator_factory, size=tree_size)
+
+        with self.assertRaises(ValueError):
+            list(iter(tree))
+
     ## Iteration nodes ##
 
     @given(iteration_tree)
@@ -342,7 +381,7 @@ class TestIteration(unittest.TestCase):
         formatted_list = "\n".join(f" - {s}" for s in iterated_list)
         hypothesis.note(f"Iterated list:\n{formatted_list}")
 
-        expected_list = list(map(list, product(*children)))
+        expected_list = list(map(list, itertools.product(*children)))
         formatted_list = "\n".join(f" - {s}" for s in expected_list)
         hypothesis.note(f"Expected list:\n{formatted_list}")
 
