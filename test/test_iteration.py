@@ -42,6 +42,9 @@ from phileas.iteration.utility import (
 hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=5))
 hypothesis.settings.load_profile("ci")
 
+# Restrict the iterated size of infinite trees
+INFINITE_TREE_ITERATED_SIZE = 500
+
 ### Hypothesis strategies ###
 
 ## Data tree ##
@@ -110,7 +113,7 @@ def sequence(draw):
 @st.composite
 def random_leaf(draw):
     seed = Seed([], draw(data_tree))
-    size = draw(st.integers(1, 3))
+    size = draw(st.one_of(st.none(), st.integers(1, 3)))
     default = draw(st.one_of(st.none(), data_tree))
     return NumpyRNG(
         seed=seed,
@@ -178,7 +181,11 @@ iterable_iteration_tree = st.recursive(
 @st.composite
 def iterable_iteration_tree_and_index(draw):
     tree = draw(iterable_iteration_tree)
-    index = draw(st.integers(min_value=0, max_value=len(tree) - 1))
+    size = tree.safe_len()
+    if size is None:
+        size = INFINITE_TREE_ITERATED_SIZE
+
+    index = draw(st.integers(min_value=0, max_value=size - 1))
     return tree, index
 
 
@@ -289,12 +296,18 @@ class TestIteration(unittest.TestCase):
 
     @given(iterable_iteration_tree)
     def test_exhausted_iterator_is_exhausted(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
         iterator = iter(tree)
         _ = list(iterator)
         self.assertEqual(list(iterator), [])
 
     @given(iterable_iteration_tree)
     def test_reversible_iterator(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
         iterator = iter(tree)
 
         forward = list(iterator)
@@ -335,14 +348,21 @@ class TestIteration(unittest.TestCase):
 
     @given(iterable_iteration_tree, st.booleans())
     def test_same_iteration_after_reset(self, tree: IterationTree, reverse: bool):
+        if reverse and tree.safe_len() is None:
+            return
+
         iterator = iter(tree)
         if reverse:
             iterator.reverse()
             iterator.reset()
 
-        l_before_reset = list(iterator)
+        size = tree.safe_len()
+        if size is None:
+            size = INFINITE_TREE_ITERATED_SIZE
+
+        l_before_reset = list(itertools.islice(iterator, size))
         iterator.reset()
-        l_after_reset = list(iterator)
+        l_after_reset = list(itertools.islice(iterator, size))
 
         self.assertEqual(l_before_reset, l_after_reset)
 
