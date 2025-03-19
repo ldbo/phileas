@@ -13,6 +13,7 @@ from operator import mul
 from typing import Callable, Sequence, TypeVar
 
 from phileas.iteration import utility
+from phileas.logging import logger
 
 from .base import (
     ChildPath,
@@ -337,27 +338,57 @@ class CartesianProduct(IterationMethod):
 
 
 class CartesianProductIterator(IterationMethodIterator[CartesianProduct]):
-    #: Reversed cumulated products of `sizes`, with `size` + 1 elements, and
+    #: Backward cumulated products of the `sizes` after the last infinite one.
+    #: It has an additional 1 at the end.
+    #:
+    #: TBR
+    #: Backward cumulated products of `sizes`, with `size` + 1 elements, and
     #: ending at 1.
     cumsizes: list[int]
+
+    last_infinite_index: int
 
     def __init__(self, product: CartesianProduct):
         super().__init__(product)
 
-        self.cumsizes = list(accumulate(reversed(self.sizes), mul, initial=1))
+        self.last_infinite_index = (
+            len(self.sizes)
+            - next(i for i, s in enumerate(self.sizes[::-1] + [None]) if s is None)
+            - 1
+        )
+
+        if self.last_infinite_index > 0:
+            logger.warning(
+                "A cartesian product contains an infinite tree at position "
+                f"{self.last_infinite_index}. During iteration, its preceding "
+                "siblings will always yield their first value."
+            )
+
+        last_finite_sizes = self.sizes[self.last_infinite_index + 1 :]
+        self.cumsizes = list(accumulate(reversed(last_finite_sizes), mul, initial=1))
         self.cumsizes.reverse()
 
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex]:
+        # -2 indicates an invalid value
         positions = [-2 for _ in self.iterators]
-        for i in range(len(self.iterators) - 1, -1, -1):
-            row_pos = (position % self.cumsizes[i]) // self.cumsizes[i + 1]
-            forward = (position // self.cumsizes[i]) % 2 == 0
+
+        for i in range(len(self.iterators) - 1, self.last_infinite_index, -1):
+            j = i - (self.last_infinite_index + 1)
+            row_pos = (position % self.cumsizes[j]) // self.cumsizes[j + 1]
+            forward = (position // self.cumsizes[j]) % 2 == 0
 
             if not forward and self.tree.snake:
-                positions[i] = self.sizes[i] - 1 - row_pos
+                current_size = self.sizes[i]
+                assert current_size is not None
+                positions[i] = current_size - 1 - row_pos
             else:
                 positions[i] = row_pos
 
+        if self.last_infinite_index > -1:
+            positions[self.last_infinite_index] = position // self.cumsizes[0]
+            positions[: self.last_infinite_index] = [0] * self.last_infinite_index
+
+        assert all(pos != -2 for pos in positions)
         return positions
 
 

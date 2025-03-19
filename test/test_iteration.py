@@ -3,9 +3,8 @@ import datetime
 import itertools
 import unittest
 
-import numpy as np
-
 import hypothesis
+import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -13,11 +12,12 @@ from phileas import iteration
 from phileas.iteration import (
     Accumulator,
     CartesianProduct,
-    DataTree,
     DataLiteral,
+    DataTree,
     FunctionalTranform,
-    GeometricRange,
     GeneratorWrapper,
+    GeometricRange,
+    InfiniteLength,
     IntegerRange,
     IterationLiteral,
     IterationMethod,
@@ -29,11 +29,11 @@ from phileas.iteration import (
     Sequence,
     Transform,
     Union,
-    InfiniteLength,
 )
 from phileas.iteration.leaf import NumpyRNG, Seed
 from phileas.iteration.utility import (
     flatten_datatree,
+    generate_seeds,
     iteration_tree_to_xarray_parameters,
 )
 
@@ -450,6 +450,37 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    def test_cartesian_product_infinite_children_explicit(self):
+        tree = generate_seeds(
+            CartesianProduct(
+                [
+                    Sequence([1, 2]),
+                    NumpyRNG(),
+                    Sequence([1, 2]),
+                    NumpyRNG(),
+                    Sequence(["a", "b"]),
+                    Sequence([True, False]),
+                ]
+            )
+        )
+
+        it = iter(tree)
+        iterated_values = list(itertools.islice(it, 10))
+        expected_values = [
+            [1, 0.9952009928886075, 1, 0.019736141410354624, "a", True],
+            [1, 0.9952009928886075, 1, 0.019736141410354624, "a", False],
+            [1, 0.9952009928886075, 1, 0.019736141410354624, "b", True],
+            [1, 0.9952009928886075, 1, 0.019736141410354624, "b", False],
+            [1, 0.9952009928886075, 1, 0.5906680448959815, "a", True],
+            [1, 0.9952009928886075, 1, 0.5906680448959815, "a", False],
+            [1, 0.9952009928886075, 1, 0.5906680448959815, "b", True],
+            [1, 0.9952009928886075, 1, 0.5906680448959815, "b", False],
+            [1, 0.9952009928886075, 1, 0.6410922942699461, "a", True],
+            [1, 0.9952009928886075, 1, 0.6410922942699461, "a", False],
+        ]
+
+        self.assertEqual(iterated_values, expected_values)
 
     @given(
         st.lists(
