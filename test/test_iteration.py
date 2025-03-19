@@ -568,7 +568,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_union_iteration(self):
+    def test_union_iteration_finite(self):
         u = Union(
             {
                 0: IntegerRange(1, 2, default_value=10),
@@ -584,6 +584,59 @@ class TestIteration(unittest.TestCase):
             {0: 10, 1: 2, 2: 1},
             {0: 10, 1: 10, 2: 1},
             {0: 10, 1: 10, 2: 2},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_iteration_infinite_inner(self):
+        tree = generate_seeds(
+            Union(
+                [
+                    Sequence([1, 2]),
+                    Sequence([1, 2]),
+                    NumpyRNG(),
+                ]
+            )
+        )
+        iterated_list = list(itertools.islice(tree, 10))
+        expected_list = [
+            [1, 1, 0.9843125015123263],
+            [2, 1, 0.9843125015123263],
+            [1, 2, 0.9843125015123263],
+            [1, 1, 0.6388309087219696],
+            [1, 1, 0.8002627898349098],
+            [1, 1, 0.8852479432716168],
+            [1, 1, 0.935376769648871],
+            [1, 1, 0.0966725012126366],
+            [1, 1, 0.49756581031313474],
+            [1, 1, 0.09470303263823587],
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_iteration_infinite_last(self):
+        tree = generate_seeds(
+            Union(
+                [
+                    Sequence([1, 2]),
+                    Sequence([1, 2], default_value=3),
+                    NumpyRNG(),
+                    Sequence([1, 2], default_value=3),
+                ]
+            )
+        )
+        iterated_list = list(itertools.islice(tree, 10))
+        expected_list = [
+            [1, 3, 0.9843125015123263, 3],
+            [2, 3, 0.9843125015123263, 3],
+            [1, 1, 0.9843125015123263, 3],
+            [1, 2, 0.9843125015123263, 3],
+            [1, 3, 0.6388309087219696, 3],
+            [1, 3, 0.8002627898349098, 3],
+            [1, 3, 0.8852479432716168, 3],
+            [1, 3, 0.935376769648871, 3],
+            [1, 3, 0.0966725012126366, 3],
+            [1, 3, 0.49756581031313474, 3],
         ]
 
         self.assertEqual(iterated_list, expected_list)

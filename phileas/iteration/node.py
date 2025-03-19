@@ -5,6 +5,7 @@ iteration methods and transform nodes, as well as their iterators.
 
 import collections.abc
 import dataclasses
+import math
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from functools import reduce
@@ -431,8 +432,10 @@ class Union(IterationMethod):
 
 
 class UnionIterator(IterationMethodIterator[Union]):
-    #: Cumulated sum of the iterated sizes of the children.
-    cumsizes: list[int]
+    #: Cumulated sum of the iterated sizes of the children, containing `int`s or
+    #: `math.inf` values. After, and including, the first infinite children, it
+    #: only contains `math.inf` values. Its size is `len(self.sizes) + 1`.
+    cumsizes: list[int | float]
 
     #: Indicates whether a child has a default value or not.
     no_default: list[bool]
@@ -446,22 +449,24 @@ class UnionIterator(IterationMethodIterator[Union]):
         n = len(self.tree.children)
         self.no_default = [False] * n
         self.first_without_default = -2
-        self.cumsizes = [0] * (n + 1)
+        self.cumsizes = [0] + [math.inf] * n
         cumsize = 0
 
-        infinite_child_found = False
         for i, (key, size) in enumerate(zip(self.keys, self.sizes)):
             no_default = _has_no_default(self.tree.children[key])  # type: ignore[index]
             self.no_default[i] = no_default
             if no_default and self.first_without_default == -2:
                 self.first_without_default = i
 
-            if infinite_child_found:
-                break
-
             if size is None:
-                infinite_child_found = True
-                del self.cumsizes[i + 1 :]
+                self.cumsizes[i + 1] = math.inf
+
+                logger.warning(
+                    f"A union contains an infinite tree at position {i}. During "
+                    "iteration, its following siblings will always yield the "
+                    "same value."
+                )
+
                 break
 
             cumsize += size - int(no_default) + int(self.first_without_default == i)
@@ -472,9 +477,11 @@ class UnionIterator(IterationMethodIterator[Union]):
         pos = position
         for i in range(len(self.iterators)):
             if self.cumsizes[i] <= pos < self.cumsizes[i + 1]:
+                cumsize = self.cumsizes[i]
+                assert isinstance(cumsize, int)
                 positions[i] = (
                     pos
-                    - self.cumsizes[i]
+                    - cumsize
                     + int(self.no_default[i])
                     - int(self.first_without_default == i)
                 )
