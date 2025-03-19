@@ -11,6 +11,7 @@ from .base import (
     ChildPath,
     DataLiteral,
     DataTree,
+    InfiniteLength,
     IterationLeaf,
     IterationTree,
     PseudoDataTree,
@@ -44,7 +45,10 @@ def restrict_leaves_sizes(
             return tree
 
         if policy == RestrictionPolicy.FIRST_LAST:
-            if len(tree) <= 2:
+            try:
+                if len(tree) <= 2:
+                    return tree
+            except InfiniteLength:
                 return tree
 
             tree_iter = iter(tree)
@@ -54,13 +58,19 @@ def restrict_leaves_sizes(
             last = next(tree_iter)
             return Sequence([first, last])
         elif policy == RestrictionPolicy.FIRST_SECOND:
-            if len(tree) <= 2:
+            try:
+                if len(tree) <= 2:
+                    return tree
+            except InfiniteLength:
                 return tree
 
             tree_iter = iter(tree)
             return Sequence([next(tree_iter), next(tree_iter)])
         else:
-            if len(tree) <= 3:
+            try:
+                if len(tree) <= 3:
+                    return tree
+            except InfiniteLength:
                 return tree
 
             tree_iter = iter(tree)

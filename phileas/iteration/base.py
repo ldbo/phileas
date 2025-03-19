@@ -92,8 +92,8 @@ class TreeIterator(ABC, Generic[T]):
     #:
     #: It can be directly modified by `update`.
     #:
-    #: This attribute is managed by `TreeIterator`, thus it must thus not be
-    #: modified by sub-classes. However, it can be read.
+    #: This attribute is managed by `TreeIterator`, thus it must not be modified
+    #: by sub-classes. However, it can be read.
     position: int
 
     def __init__(self, tree: T) -> None:
@@ -116,9 +116,9 @@ class TreeIterator(ABC, Generic[T]):
         else:
             try:
                 self.position = len(self.tree)
-            except TypeError as error:
-                raise Exception(
-                    "Cannot backward-reset an infinite iterator."
+            except InfiniteLength as error:
+                raise ValueError(
+                    "Cannot reset a backward infinite iterator."
                 ) from error
 
     def is_forward(self) -> bool:
@@ -160,7 +160,7 @@ class TreeIterator(ABC, Generic[T]):
         try:
             if position > len(self.tree):
                 raise IndexError("Cannot update to a position > size.")
-        except TypeError:
+        except InfiniteLength:
             # There is no upper bound to the indices of an infinite tree
             pass
 
@@ -201,7 +201,7 @@ class TreeIterator(ABC, Generic[T]):
                 if self.position >= len(self.tree):
                     self.position = len(self.tree)
                     raise StopIteration
-            except TypeError:
+            except InfiniteLength:
                 pass
         else:
             self.position -= 1
@@ -298,6 +298,14 @@ if typing.TYPE_CHECKING:
     from .node import Transform
 
 
+class InfiniteLength(BaseException):
+    """
+    Exception raised when requesting the length of an infinite collection.
+    """
+
+    pass
+
+
 class IterationTree(ABC):
     """
     Represents a set of data trees, as well as the way to iterate over them. In
@@ -317,10 +325,23 @@ class IterationTree(ABC):
     def __len__(self) -> int:
         """
         Return the number of data trees represented by the iteration tree. If it
-        is finite, it should be the same as the number of elements yielded by
-        `__iter__`. Otherwise, a `TypeError` is raised.
+        is finite, it is the same as the number of elements yielded by
+        `__iter__`. Otherwise, an `InfiniteLength` is raised.
+
+        See `safe_len` for a method that does not raise errors.
         """
         raise NotImplementedError()
+
+    def safe_len(self) -> int | None:
+        """
+        Return the number of data trees represented by the iteration tree. If it
+        is finite, it is the same as the number of elements yielded by
+        `__iter__`. Otherwise, return `None`.
+        """
+        try:
+            return len(self)
+        except InfiniteLength:
+            return None
 
     def iterate(self) -> TreeIterator:
         """

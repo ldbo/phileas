@@ -222,8 +222,8 @@ class IterationMethodIterator(TreeIterator[T]):
     #: order.
     iterators: list[TreeIterator]
 
-    #: Size of each of the `iterators`.
-    sizes: list[int]
+    #: Size of each of the `iterators`. `None` represents infinite trees.
+    sizes: list[int | None]
 
     #: Last returned positions of the child iterators.
     positions: Sequence[int | DefaultIndex | None]
@@ -253,13 +253,7 @@ class IterationMethodIterator(TreeIterator[T]):
         self.iterators = [iter(tree.children[key]) for key in self.keys]  # type: ignore[index]
         self.positions = [it.position for it in self.iterators]
 
-        try:
-            self.sizes = [len(tree.children[key]) for key in self.keys]  # type: ignore[index]
-        except TypeError as error:
-            raise Exception(
-                "Iteration over iteration methods with infinite children is not"
-                " supported."
-            ) from error
+        self.sizes = [tree.children[key].safe_len() for key in self.keys]  # type: ignore[index]
 
     def reset(self):
         super().reset()
@@ -418,23 +412,29 @@ class UnionIterator(IterationMethodIterator[Union]):
     def __init__(self, tree: Union) -> None:
         super().__init__(tree)
 
-        try:
-            n = len(self.tree.children)
-            self.no_default = [False] * n
-            self.first_without_default = -2
-            self.cumsizes = [0] * (n + 1)
-            cumsize = 0
+        n = len(self.tree.children)
+        self.no_default = [False] * n
+        self.first_without_default = -2
+        self.cumsizes = [0] * (n + 1)
+        cumsize = 0
 
-            for i, (key, size) in enumerate(zip(self.keys, self.sizes)):
-                no_default = _has_no_default(self.tree.children[key])  # type: ignore[index]
-                self.no_default[i] = no_default
-                if no_default and self.first_without_default == -2:
-                    self.first_without_default = i
+        infinite_child_found = False
+        for i, (key, size) in enumerate(zip(self.keys, self.sizes)):
+            no_default = _has_no_default(self.tree.children[key])  # type: ignore[index]
+            self.no_default[i] = no_default
+            if no_default and self.first_without_default == -2:
+                self.first_without_default = i
 
-                cumsize += size - int(no_default) + int(self.first_without_default == i)
-                self.cumsizes[i + 1] = cumsize
-        except TypeError as error:
-            raise Exception("Union is not supported with infinite children.") from error
+            if infinite_child_found:
+                break
+
+            if size is None:
+                infinite_child_found = True
+                del self.cumsizes[i + 1 :]
+                break
+
+            cumsize += size - int(no_default) + int(self.first_without_default == i)
+            self.cumsizes[i + 1] = cumsize
 
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
         positions: list[int | DefaultIndex] = [0] * len(self.iterators)

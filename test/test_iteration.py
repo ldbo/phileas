@@ -26,6 +26,7 @@ from phileas.iteration import (
     Sequence,
     Transform,
     Union,
+    InfiniteLength,
 )
 from phileas.iteration.leaf import NumpyRNG, Seed
 from phileas.iteration.utility import (
@@ -244,7 +245,7 @@ class TestIteration(unittest.TestCase):
             formatted_list = "\n".join(f" - {s}" for s in tree)
             hypothesis.note(f"The iterated list is \n{formatted_list}")
             self.assertEqual(n, len(list(tree)))
-        except TypeError:
+        except InfiniteLength:
             return
 
     @given(iterable_iteration_tree)
