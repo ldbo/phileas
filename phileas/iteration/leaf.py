@@ -71,7 +71,7 @@ class GeneratorWrapper(IterationLeaf):
     iteration is supported by the node.
     """
 
-    generator_function: Callable[[Any], Iterator[DataTree]]
+    generator_function: Callable[..., Iterator[DataTree]]
     args: list = field(default_factory=list)
     kwargs: dict = field(default_factory=dict)
     size: int | None = None
