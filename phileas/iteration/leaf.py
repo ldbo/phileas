@@ -350,7 +350,7 @@ class RandomIterationLeaf(IterationLeaf):
         raise TypeError("This random iteration leaf does not have a length.")
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
-        return self.default()  # type: ignore[return-value]
+        return self
 
 
 @dataclass(frozen=True)
