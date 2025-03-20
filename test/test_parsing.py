@@ -70,6 +70,46 @@ default: 12
             iteration.Sequence([1, 2, 3]),
         )
 
+    def test_configurations(self):
+        content = """
+c: !configurations
+  _default: config1
+  _move_up: false
+  _insert_name: false
+  config1:
+    param1: 1_1
+    param2: 1_2
+  config2:
+    param1: 2_1
+    param2: 2_2
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = iteration.CartesianProduct(
+            children={
+                "c": iteration.Configurations(
+                    children={
+                        "config1": iteration.CartesianProduct(
+                            children={
+                                "param1": iteration.IterationLiteral(value=11),
+                                "param2": iteration.IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": iteration.CartesianProduct(
+                            children={
+                                "param1": iteration.IterationLiteral(value=21),
+                                "param2": iteration.IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    default_configuration="config1",
+                    move_up=False,
+                    insert_name=False,
+                )
+            },
+        )
+
+        self.assertEqual(tree, expected_tree)
+
     def test_literal_tree(self):
         content = """12"""
         self.assertEqual(
