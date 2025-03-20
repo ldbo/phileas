@@ -430,6 +430,8 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(l_before_reset, l_after_reset)
 
+    ## Iteration methods ##
+
     @given(st.lists(st.integers(min_value=2, max_value=3), min_size=1, max_size=5))
     def test_cartesian_product_forward_lazy_iteration(self, sizes: list[int]):
         tree = CartesianProduct(
@@ -567,34 +569,6 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_values, expected_values)
-
-    @given(
-        st.lists(
-            st.dictionaries(
-                st.integers(min_value=0, max_value=4),
-                st.text(max_size=2),
-                min_size=1,
-                max_size=5,
-            ),
-            min_size=1,
-            max_size=5,
-        )
-    )
-    def test_accumulating_transform(self, dicts: list[dict[int, str]]):
-        nac_tree = Sequence(dicts)  # type: ignore[arg-type]
-        ac_nac_list = []
-        ac_data_tree: dict[int, str] = {}
-        for data_tree in nac_tree:
-            ac_data_tree |= data_tree  # type: ignore[arg-type]
-            ac_nac_list.append(ac_data_tree.copy())
-
-        hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
-
-        ac_tree = Accumulator(Sequence(dicts))  # type: ignore[arg-type]
-        ac_list = list(ac_tree)
-        hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
-
-        self.assertEqual(ac_list, ac_nac_list)
 
     @given(
         st.dictionaries(key, sequence(), min_size=1, max_size=5),
@@ -756,6 +730,150 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
+    def test_configurations_sample(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=False,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": CartesianProduct(
+                    children={
+                        "param1": IterationLiteral(value=11),
+                        "param2": IterationLiteral(value=12),
+                    },
+                )
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=True,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "param1": IterationLiteral(value=11),
+                "param2": IterationLiteral(value=12),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup_insertname(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=True,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": IterationLiteral(value="config1"),
+                "param1": IterationLiteral(value=11),
+                "param2": IterationLiteral(value=12),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_insertname(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=False,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": CartesianProduct(
+                    children={
+                        "_configuration": IterationLiteral(value="config1"),
+                        "param1": IterationLiteral(value=11),
+                        "param2": IterationLiteral(value=12),
+                    },
+                )
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    ## Transform ##
+
     def test_transform(self):
         class Add1Tranform(Transform):
             def transform(self, data_tree: int) -> int:  # type: ignore
@@ -772,6 +890,36 @@ class TestIteration(unittest.TestCase):
         t = FunctionalTranform(IntegerRange(0, 2), add1)
         t_result = list(t)
         self.assertEqual(t_result, [1, 2, 3])
+
+    @given(
+        st.lists(
+            st.dictionaries(
+                st.integers(min_value=0, max_value=4),
+                st.text(max_size=2),
+                min_size=1,
+                max_size=5,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    def test_accumulating_transform(self, dicts: list[dict[int, str]]):
+        nac_tree = Sequence(dicts)  # type: ignore[arg-type]
+        ac_nac_list = []
+        ac_data_tree: dict[int, str] = {}
+        for data_tree in nac_tree:
+            ac_data_tree |= data_tree  # type: ignore[arg-type]
+            ac_nac_list.append(ac_data_tree.copy())
+
+        hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
+
+        ac_tree = Accumulator(Sequence(dicts))  # type: ignore[arg-type]
+        ac_list = list(ac_tree)
+        hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
+
+        self.assertEqual(ac_list, ac_nac_list)
+
+    ## Default ##
 
     def test_no_default_policy_skip(self):
         t = CartesianProduct({"a": LinearRange(1, 2)})
