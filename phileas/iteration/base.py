@@ -96,10 +96,16 @@ class TreeIterator(ABC, Generic[T]):
     #: by sub-classes. However, it can be read.
     position: int
 
+    #: Cached size of the iterated tree. Consider using this instead of `len
+    #: (self.tree)`, as computing the length of a tree can be an expensive
+    #: operation.
+    size: int | None
+
     def __init__(self, tree: T) -> None:
         self.__forward = True
         self.position = -1
         self.tree = tree
+        self.size = tree.safe_len()
 
     def __iter__(self: Self) -> Self:
         return self
@@ -114,12 +120,9 @@ class TreeIterator(ABC, Generic[T]):
         if self.__forward:
             self.position = -1
         else:
-            try:
-                self.position = len(self.tree)
-            except InfiniteLength as error:
-                raise ValueError(
-                    "Cannot reset a backward infinite iterator."
-                ) from error
+            if self.size is None:
+                raise ValueError("Cannot reset a backward infinite iterator.")
+            self.position = self.size
 
     def is_forward(self) -> bool:
         """
@@ -158,7 +161,7 @@ class TreeIterator(ABC, Generic[T]):
         if position < -1:
             raise IndexError("Cannot update to a position < -1.")
         try:
-            if position > len(self.tree):
+            if self.size is not None and position > self.size:
                 raise IndexError("Cannot update to a position > size.")
         except InfiniteLength:
             # There is no upper bound to the indices of an infinite tree
@@ -185,8 +188,10 @@ class TreeIterator(ABC, Generic[T]):
         """
         Return the value at `position`.
 
-        It is assumed that whenever it is called, the return value is given to
-        the user.
+        Assumptions:
+         - The ownership of the return value is given to the user.
+         - `self._position` is a valid value, between `0` and `self.size - 1`.
+           Thus, it should never raise a `StopIteration`.
         """
         raise NotImplementedError()
 
@@ -197,12 +202,9 @@ class TreeIterator(ABC, Generic[T]):
         if self.__forward:
             self.position += 1
 
-            try:
-                if self.position >= len(self.tree):
-                    self.position = len(self.tree)
-                    raise StopIteration
-            except InfiniteLength:
-                pass
+            if self.size is not None and self.position >= self.size:
+                self.position = self.size
+                raise StopIteration
         else:
             self.position -= 1
 

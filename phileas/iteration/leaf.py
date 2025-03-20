@@ -105,7 +105,6 @@ class GeneratorWrapper(IterationLeaf):
 class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
     generator: Iterator[DataTree]
     last_position: int
-    size: int | None
 
     def __init__(self, tree: GeneratorWrapper):
         super().__init__(tree)
@@ -113,20 +112,14 @@ class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
         self.generator = self.tree.generator_function(
             *self.tree.args, **self.tree.kwargs
         )
-        self.size = tree.size
 
     def _current_value(self) -> DataTree:
         if self.position != self.last_position + 1:
             msg = (
-                f"{self.__class__.__name__} can only be used for "
-                "continuous forward iteration."
+                f"{self.__class__.__name__} can only be used for continuous "
+                "forward iteration."
             )
             raise Exception(msg)
-
-        if self.position == self.size:
-            raise StopIteration
-
-        self.last_position = self.position
 
         value = None
         try:
@@ -138,6 +131,7 @@ class GeneratorWrapperIterator(TreeIterator[GeneratorWrapper]):
                 f"tree size is {tree_size}."
             ) from e
 
+        self.last_position = self.position
         return value
 
     def reset(self):
@@ -444,7 +438,6 @@ class NumpyRNGIterator(TreeIterator[NumpyRNG]):
     """
 
     seed: list[int]
-    size: int | None
 
     def __init__(self, tree: NumpyRNG) -> None:
         super().__init__(tree)
