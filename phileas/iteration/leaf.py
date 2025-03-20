@@ -405,6 +405,19 @@ class RandomIterationLeaf(IterationLeaf):
 class NumpyRNG(RandomIterationLeaf):
     """
     Random iteration leaf based on the RNG of numpy.
+
+    Note:
+
+    Iteration is based on `NumpyRNGIterator`. It works by seeding a PRNG with a
+    value which depends on the requested iteration position. This might
+    introduce a bias on the generated random values. This is done as a way to
+    provide a random-access PRNG, although an actual random-access PRNG would
+    be preferable.
+
+    Alternatively, the iterator could be built from a usual iterative PRNG, and
+    caching would be used to provide access to previous values. This would
+    impact iteration performances (especially for cache misses, which can
+    induce unbound time delays).
     """
 
     #: Which distribution to use for the node. It must be a distribution method
