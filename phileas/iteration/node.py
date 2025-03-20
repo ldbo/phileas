@@ -10,7 +10,7 @@ from abc import abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import reduce
-from itertools import accumulate
+from itertools import accumulate, chain
 from operator import mul
 from typing import Callable, Sequence, TypeVar
 
@@ -21,6 +21,7 @@ from .base import (
     ChildPath,
     DataTree,
     DefaultIndex,
+    IterationLeaf,
     IterationTree,
     Key,
     NoDefaultError,
@@ -33,6 +34,8 @@ from .base import (
     no_default,
 )
 
+### Iteration method nodes ###
+
 
 @dataclass(frozen=True)
 class IterationMethod(IterationTree):
@@ -42,7 +45,7 @@ class IterationMethod(IterationTree):
 
     In order to implement a concrete iteration method, you should sub-class
     `IterationMethod` and implement a corresponding `IterationMethodIterator`,
-    which is returned by `__iter__()`.
+    which is returned by `_iter()`.
 
     This should remain the only node in an iteration tree that can hold `dict`
     and `list` children. If you are tempted to create another node doing so,
@@ -74,6 +77,16 @@ class IterationMethod(IterationTree):
         if not isinstance(self.children, (list, dict)):
             raise TypeError("IterationMethod must have list or dict children.")
 
+        self.__verify_order()
+
+        if self.lazy and not isinstance(self.children, dict):
+            raise TypeError("Lazy iteration is only supported for dictionary children.")
+
+        object.__setattr__(
+            self, "configurations", self.__extract_children_configurations()
+        )
+
+    def __verify_order(self):
         if self.order is not None:
             keys: set[Key]
             if isinstance(self.children, list):
@@ -88,8 +101,96 @@ class IterationMethod(IterationTree):
                 msg = "The iteration order must be a permutation of the children keys."
                 raise ValueError(msg)
 
-        if self.lazy and not isinstance(self.children, dict):
-            raise TypeError("Lazy iteration is only supported for dictionary children.")
+    def __extract_children_configurations(self) -> frozenset[Key]:
+        if isinstance(self.children, dict):
+            children_configurations = (
+                child.configurations for child in self.children.values()
+            )
+        else:
+            assert isinstance(self.children, list)
+            children_configurations = (child.configurations for child in self.children)
+
+        return frozenset(chain(*children_configurations))
+
+    def _get_configuration(self, config_name: Key) -> "IterationTree":
+        if config_name not in self.configurations:
+            return self
+
+        new_children: list[IterationTree] | dict[Key, IterationTree]
+        if isinstance(self.children, list):
+            new_children = [
+                child._get_configuration(config_name) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            new_children = {}
+            for child_key, child_value in self.children.items():
+                if isinstance(child_value, Configurations):
+                    self.__update_children_with_configuration(
+                        new_children, config_name, child_key, child_value
+                    )
+                else:
+                    new_children[child_key] = child_value._get_configuration(
+                        config_name
+                    )
+
+        return dataclasses.replace(self, children=new_children)
+
+    def __update_children_with_configuration(
+        self,
+        children: dict[Key, IterationTree],
+        requested_config_name: Key,
+        configs_key: Key,
+        configs: "Configurations",
+    ):
+        """
+        Given a dict containing the currently processed `children` of the tree,
+        update it with configuration `requested_config_name` from the child
+        `configs`, identified by `configs_key`, of the current node.
+        """
+
+        def update_dict(new_dict: dict[Key, IterationTree]):
+            new_keys = set(new_dict.keys())
+            conflicting_keys = set(children.keys()) & new_keys
+            children.update(new_dict)
+
+            if len(conflicting_keys) == 0:
+                return
+
+            logger.warning(
+                f"Overriding keys {conflicting_keys} during configuration access."
+            )
+
+        from .leaf import IterationLiteral
+
+        requested_config = configs._get_configuration(requested_config_name)
+        if configs.move_up:
+            if not isinstance(requested_config, IterationMethod):
+                raise ValueError(
+                    "Configurations with move_up must be iteration methods."
+                )
+
+            if not isinstance(requested_config.children, dict):
+                raise ValueError("Configurations with move_up must have dict children.")
+
+            update_dict(requested_config.children)
+
+            if configs.insert_name:
+                update_dict({configs_key: IterationLiteral(requested_config_name)})
+        else:  # not configs.move_up
+            if configs.insert_name:
+                try:
+                    requested_config = requested_config.insert_child(
+                        ["_configuration"], IterationLiteral(requested_config_name)
+                    )
+                except TypeError as e:
+                    msg = (
+                        "Configurations with insert_name and not move_up must "
+                        "have dict-like children."
+                    )
+                    raise TypeError(msg) from e
+
+            update_dict({configs_key: requested_config})
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         if isinstance(self.children, list):
@@ -330,10 +431,10 @@ class CartesianProduct(IterationMethod):
     #: differ by only one key at most (a la Gray code).
     snake: bool = False
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return CartesianProductIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         children: collections.abc.Sized
         if isinstance(self.children, list):
             children = self.children
@@ -416,10 +517,10 @@ class Union(IterationMethod):
      - their first value otherwise.
     """
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return UnionIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         children: list[IterationTree]
         if isinstance(self.children, list):
             children = self.children
@@ -499,6 +600,9 @@ class UnionIterator(IterationMethodIterator[Union]):
         return positions
 
 
+### Transform nodes ###
+
+
 @dataclass(frozen=True)
 class Transform(IterationTree):
     """
@@ -510,6 +614,9 @@ class Transform(IterationTree):
 
     child: IterationTree
 
+    def __post_init__(self):
+        object.__setattr__(self, "_configurations", self.child.configurations)
+
     @abstractmethod
     def transform(self, data_tree: DataTree) -> DataTree:
         """
@@ -518,10 +625,10 @@ class Transform(IterationTree):
         """
         raise NotImplementedError()
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return TransformIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         return len(self.child)
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
@@ -582,6 +689,14 @@ class Transform(IterationTree):
         new_child = self.child._depth_first_modify(modifier, path + [child])
         return modifier(dataclasses.replace(self, child=new_child), path)
 
+    # Configurations
+
+    def _get_configuration(self, config_name: Key) -> IterationTree:
+        if config_name not in self.configurations:
+            return self
+
+        return self._insert_child(_Child(), self.child._get_configuration(config_name))
+
 
 U = TypeVar("U", bound=Transform, covariant=True)
 
@@ -639,7 +754,7 @@ class Accumulator(Transform):
     #: `None`.
     start_value: dict[Key, DataTree] | None = None
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return AccumulatorIterator(self)
 
     def transform(self, data_tree: DataTree) -> DataTree:
@@ -683,7 +798,7 @@ class Lazify(Transform):
     (for other types).
     """
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return LazifyIterator(self)
 
     def transform(self, data_tree: DataTree) -> DataTree:
@@ -707,7 +822,6 @@ class LazifyIterator(TransformIterator[Lazify]):
 
     def _current_value(self) -> DataTree:
         new_value = super()._current_value()
-        print(f"{self.accumulated_value=}")
 
         if isinstance(new_value, dict):
             if not isinstance(self.accumulated_value, dict):
@@ -729,3 +843,141 @@ class LazifyIterator(TransformIterator[Lazify]):
         else:
             self.accumulated_value = None
             return new_value
+
+
+@dataclass(frozen=True)
+class Configurations(IterationMethod):
+    """
+    It represents a set of configurations that can be invoked using
+    `IterationTree.get_configuration`. This allows to escape from the recursive
+    and local nature of trees: requesting a configuration on the root of the
+    tree returns a subset of it, which can change its global topology.
+
+    It holds a set of mapping of iteration trees, called *configurations*, which
+    are identified by their *name*. By default, the configurations are expected
+    to be thought of as dictionaries - that is, they are either literal
+    dictionaries, or iteration methods whose children are stored in a
+    dictionary -, and the `Configurations` node is supposed to be the child of
+    an iteration method. Calling `get_configuration` inserts the content of
+    the dictionary as siblings of the `Configurations` node. Additionally, the
+    `Configurations` node is replaced by the name of the requested
+    configuration.
+
+    >>> tree = CartesianProduct({
+    ...     "instrument": CartesianProduct({
+    ...         "config_name": Configurations({
+    ...             "config1": CartesianProduct({
+    ...                 "param1": IterationLiteral(value="1-1"),
+    ...                 "param2": IterationLiteral(value="1-2"),
+    ...             }),
+    ...             "config2": CartesianProduct({
+    ...                 "param1": IterationLiteral(value="2-1"),
+    ...                 "param3": IterationLiteral(value="2-3"),
+    ...             })
+    ...         })
+    ...     })
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'instrument': {'config_name': 'config1', 'param1': '1-1', 'param2': '1-2'}}
+
+    Setting `move_up` to `False` changes this behaviour, so that the content of
+    the requested configuration is inserted in place of the `Configurations`
+    node. Additionally, `insert_name` allows to control whether the name of the
+    requested configuration is kept. If set, with `move_up == False`, the name
+    is inserted in the `_configuration` key.
+
+    >>> tree = CartesianProduct({
+    ...     "instrument": CartesianProduct({
+    ...         "param_set": Configurations({
+    ...             "config1": CartesianProduct({
+    ...                 "param1": IterationLiteral(value="1-1"),
+    ...                 "param2": IterationLiteral(value="1-2"),
+    ...             }),
+    ...             "config2": CartesianProduct({
+    ...                 "param1": IterationLiteral(value="2-1"),
+    ...                 "param3": IterationLiteral(value="2-3"),
+    ...             })
+    ...         },
+    ...         move_up=False)
+    ...     })
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'instrument':
+        {'param_set':
+            {'_configuration': 'config1',
+             'param1': '1-1',
+             'param2': '1-2'
+            }
+        }
+    }
+
+    """
+
+    children: dict[Key, IterationTree]
+
+    #: Key of the default configuration, which must be in the set of keys of
+    #: children.
+    default_configuration: Key | None = None
+
+    #: If set, the content of a requested configuration is moved up, at the
+    #: parent level of the current node. In other words, it becomes a sibling
+    #: of the current `Configurations` node.
+    #:
+    #:  Otherwise, the content is inserted at the same level as the
+    #:  configurations themselves.
+    move_up: bool = True
+
+    #: If set, insert the name of the requested configuration when calling
+    #: `get_configuration`. If `move_up`, then the `Configurations` node is
+    #: replaced by this name. Otherwise, a `"_configuration"` sibling node is
+    #: inserted.
+    insert_name: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        object.__setattr__(
+            self, "configurations", self.configurations.union(self.children.keys())
+        )
+
+        if (
+            self.default_configuration is not None
+            and self.default_configuration not in self.children
+        ):
+            raise KeyError("Default configuration not in the children configurations.")
+
+        if self.move_up:
+            for child_value in self.children.values():
+                if isinstance(child_value, IterationLeaf):
+                    raise TypeError(
+                        "move_up configurations must be iteration nodes, not leaves."
+                    )
+
+    def _get_configuration(self, config_name: Key) -> IterationTree:
+        try:
+            return self.children[config_name]
+        except KeyError as e:
+            if self.default_configuration is not None:
+                return self.children[self.default_configuration]
+            else:
+                raise KeyError(
+                    f"Missing configuration {config_name}, with no default "
+                    "configuration."
+                ) from e
+
+    def _iter(self) -> TreeIterator:
+        raise AssertionError(
+            f"{self.__class__.__name__} iteration is handled by "
+            "IterationTree.__iter__."
+        )
+
+    def _len(self) -> int:
+        raise AssertionError(
+            f"{self.__class__.__name__} length is handled by IterationTree.__len__."
+        )
+
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
+        if self.default_configuration is None:
+            raise NoDefaultError.build_from(self)
+
+        return self.children[self.default_configuration].default(no_default_policy)

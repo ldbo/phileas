@@ -16,6 +16,7 @@ those trees in order to modify the data trees generated while iterating.
 
 __all__ = [
     "ChildPath",
+    "Configurations",
     "DataLiteral",
     "DataTree",
     "IterationLeaf",
@@ -57,9 +58,9 @@ from .base import (
     ChildPath,
     DataLiteral,
     DataTree,
+    InfiniteLength,
     IterationLeaf,
     IterationTree,
-    InfiniteLength,
     Key,
     NoDefaultError,
     NoDefaultPolicy,
@@ -86,6 +87,7 @@ from .leaf import (
 from .node import (
     Accumulator,
     CartesianProduct,
+    Configurations,
     FunctionalTranform,
     IterationMethod,
     Lazify,

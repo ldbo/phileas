@@ -5,9 +5,10 @@ iteration (data tree, pseudo data tree and iteration tree).
 
 import typing
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from itertools import accumulate
+from typing import TYPE_CHECKING, Any, Callable, Generic, Sequence, TypeVar
 
 from typing_extensions import assert_never
 
@@ -323,14 +324,49 @@ class IterationTree(ABC):
     Instead, a new one must be created from this one.
     """
 
+    #: Names of the available configurations.
+    configurations: frozenset[Key] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
+
+    def get_configuration(self, key: Key) -> "IterationTree":
+        """
+        Returns a given configuration of the tree, if it exists. Otherwise,
+        raises a `KeyError`.
+        """
+        if key not in self.configurations:
+            raise KeyError(f"Configuration {key} does not exist.")
+
+        return self._get_configuration(key)
+
     @abstractmethod
+    def _get_configuration(self, config_name: Key) -> "IterationTree":
+        """
+        Actual implementation of the configuration access in sub-classes.
+
+        `config_name` is assumed to be a valid configuration of the tree, so
+        recursive calls either return an actual configuration, or the
+        unmodified tree.
+        """
+        raise NotImplementedError()
+
     def __iter__(self) -> TreeIterator:
         """
         Return a two-way resetable tree iterator.
         """
-        raise NotImplementedError()
+        if len(self.configurations) == 0:
+            return self._iter()
+
+        return ConfigurableTreeIterator(self)
 
     @abstractmethod
+    def _iter(self) -> TreeIterator:
+        """
+        Implementation of `__iter__` which assumes that `self` does not have
+        any configuration.
+        """
+        raise NotImplementedError()
+
     def __len__(self) -> int:
         """
         Return the number of data trees represented by the iteration tree. If it
@@ -339,7 +375,12 @@ class IterationTree(ABC):
 
         See `safe_len` for a method that does not raise errors.
         """
-        raise NotImplementedError()
+        if len(self.configurations) == 0:
+            return self._len()
+
+        return sum(
+            len(self.get_configuration(config)) for config in self.configurations
+        )
 
     def safe_len(self) -> int | None:
         """
@@ -352,12 +393,20 @@ class IterationTree(ABC):
         except InfiniteLength:
             return None
 
+    @abstractmethod
+    def _len(self) -> int:
+        """
+        Implementation of `__len__` which assumes that `self` does not have
+        any configuration.
+        """
+        raise NotImplementedError()
+
     def iterate(self) -> TreeIterator:
         """
-        Other name of `__iter__`, which can be more explicit in for example
-        `list(tree.iterate())`.
+        Implementation of `__len__` which assumes that `self` does not have
+        any configuration.
         """
-        return self.__iter__()
+        raise NotImplementedError()
 
     @abstractmethod
     def to_pseudo_data_tree(self) -> PseudoDataTree:
@@ -478,6 +527,7 @@ class IterationTree(ABC):
         """
         if tree is None and len(path) == 1:
             return self._remove_child(path[0])
+
         if len(path) == 0:
             if tree is None:
                 raise KeyError("Cannot remove the root of an iteration tree.")
@@ -485,7 +535,12 @@ class IterationTree(ABC):
             return tree
         else:
             key = path[0]
-            new_child = self._get(key).insert_child(path[1:], tree)
+            new_child = tree
+
+            if len(path) > 1:
+                new_child = self._get(key).insert_child(path[1:], tree)
+
+            assert new_child is not None
             return self._insert_child(key, new_child)
 
     def remove_child(self, path: ChildPath) -> "IterationTree":
@@ -561,6 +616,38 @@ class IterationTree(ABC):
         raise NotImplementedError()
 
 
+class ConfigurableTreeIterator(TreeIterator[IterationTree]):
+    """
+    This iterator handles iteration through the different configurations of a
+    tree. Configurations are iterated over following the order of their names.
+    """
+
+    #: Ordered iterators over each of the tree configurations
+    iterators: Sequence[TreeIterator]
+
+    #: Cumulated sum of the iterated sizes of the children, with a prepended 0.
+    cumsizes: list[int]
+
+    def __init__(self, tree: IterationTree) -> None:
+        super().__init__(tree)
+
+        configurations = [
+            self.tree.get_configuration(config)
+            for config in sorted(self.tree.configurations)
+        ]
+        self.iterators = [iter(config) for config in configurations]
+        self.cumsizes = list(
+            accumulate([len(config) for config in configurations], initial=0)
+        )
+
+    def _current_value(self) -> DataTree:
+        config = (
+            next(pos for pos, cs in enumerate(self.cumsizes) if cs > self.position) - 1
+        )
+        config_pos = self.position - self.cumsizes[config]
+        return self.iterators[config][config_pos]
+
+
 @dataclass(frozen=True)
 class IterationLeaf(IterationTree):
     def _get(self, child_key: Key | _Child) -> IterationTree:
@@ -591,3 +678,6 @@ class IterationLeaf(IterationTree):
 
     def __getitem__(self, key: Key) -> "IterationTree":
         raise TypeError(f"{self.__class__.__name__} does not support indexing.")
+
+    def _get_configuration(self, config_name: Key) -> "IterationTree":
+        return self

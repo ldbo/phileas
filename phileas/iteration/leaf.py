@@ -34,10 +34,10 @@ class IterationLiteral(IterationLeaf, Generic[DT]):
 
     value: DT
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return LiteralIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         return 1
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
@@ -83,7 +83,7 @@ class GeneratorWrapper(IterationLeaf):
 
     default_value: DataTree = field(default_factory=_NoDefault)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         if self.size is None:
             raise InfiniteLength
 
@@ -95,7 +95,7 @@ class GeneratorWrapper(IterationLeaf):
 
         return self.default_value
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return GeneratorWrapperIterator(self)
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
@@ -159,10 +159,10 @@ class NumericRange(IterationLeaf, Generic[T]):
     end: T
     default_value: T | _NoDefault = field(default_factory=_NoDefault)
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         raise TypeError("Cannot iterate over a numeric range.")
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         msg = "A numeric range does not have a length. "
         msg += "You can instead use a geometric, linear or integer range."
         raise TypeError(msg)
@@ -191,7 +191,7 @@ class LinearRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         sequence: list
         if self.steps == 1:
             sequence = [self.start]
@@ -205,7 +205,7 @@ class LinearRange(NumericRange[float]):
         # TBD do we want to use a SequenceIterator for those?
         return SequenceIterator(Sequence(sequence, default_value=self.default_value))
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         return self.steps
 
 
@@ -225,7 +225,7 @@ class GeometricRange(NumericRange[float]):
         if self.steps < 1 or (self.start != self.end and self.steps < 2):
             raise ValueError("Invalid number of steps.")
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         sequence: list
         if self.steps == 1:
             sequence = [self.start]
@@ -239,7 +239,7 @@ class GeometricRange(NumericRange[float]):
 
         return SequenceIterator(Sequence(sequence, default_value=self.default_value))
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         return self.steps
 
 
@@ -268,10 +268,10 @@ class IntegerRange(NumericRange[int | float]):
                 "end must be an int or +/-math.inf, {self.end} is not supported"
             )
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return IntegerRangeIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         if self.end in {inf, -inf}:
             raise InfiniteLength
 
@@ -316,10 +316,10 @@ class Sequence(IterationLeaf):
         if len(self.elements) == 0:
             raise ValueError("Empty elements are forbidden.")
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return SequenceIterator(self)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         return len(self.elements)
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
@@ -394,7 +394,7 @@ class RandomIterationLeaf(IterationLeaf):
 
     default_value: DataTree | _NoDefault = field(default_factory=_NoDefault)
 
-    def __len__(self) -> int:
+    def _len(self) -> int:
         if self.size is None:
             raise InfiniteLength
 
@@ -433,7 +433,7 @@ class NumpyRNG(RandomIterationLeaf):
     #: Keyword arguments to pass to the distribution.
     kwargs: dict[str, Any] = field(default_factory=dict)
 
-    def __iter__(self) -> TreeIterator:
+    def _iter(self) -> TreeIterator:
         return NumpyRNGIterator(self)
 
     def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
