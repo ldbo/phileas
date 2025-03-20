@@ -14,6 +14,7 @@ from phileas import iteration
 from phileas.iteration import (
     Accumulator,
     CartesianProduct,
+    Configurations,
     DataLiteral,
     DataTree,
     FunctionalTranform,
@@ -28,11 +29,12 @@ from phileas.iteration import (
     LinearRange,
     NoDefaultPolicy,
     NumericRange,
+    NumpyRNG,
+    Seed,
     Sequence,
     Transform,
     Union,
 )
-from phileas.iteration.leaf import NumpyRNG, Seed
 from phileas.iteration.utility import (
     flatten_datatree,
     generate_seeds,
@@ -149,14 +151,45 @@ iterable_iteration_leaf = st.one_of(
 
 
 @st.composite
-def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
-    Node = draw(st.sampled_from([CartesianProduct, Union]))
+def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
     children = draw(
-        st.lists(children, min_size=1, max_size=4)
-        | st.dictionaries(data_literal, children, min_size=1, max_size=4)
+        st.lists(children_st, min_size=1, max_size=4)
+        | st.dictionaries(data_literal, children_st, min_size=1, max_size=4)
     )
 
-    return Node(children, lazy=False)
+    node_types = [CartesianProduct, Union]
+    if isinstance(children, dict):
+        node_types.append(Configurations)
+    Node = draw(st.sampled_from(node_types))
+
+    if Node != Configurations:
+        return Node(children, lazy=False)
+
+    assert isinstance(children, dict)
+    assert Node == Configurations
+
+    move_up = False
+    insert_name = False
+    if all(
+        isinstance(c, IterationMethod) and isinstance(c.children, dict)
+        for c in children.values()
+    ):
+        move_up = draw(st.booleans())
+
+        if move_up:
+            insert_name = False
+        else:
+            insert_name = draw(st.booleans())
+
+    default_child = draw(st.sampled_from(list(children.keys())))
+
+    return Configurations(
+        children,
+        lazy=False,
+        move_up=move_up,
+        insert_name=insert_name,
+        default_configuration=default_child,
+    )
 
 
 class IdTransform(Transform):
@@ -168,16 +201,33 @@ def transform(child: st.SearchStrategy):
     return st.builds(IdTransform, child)
 
 
-iteration_tree = st.recursive(
+iteration_tree_with_likely_config_root = st.recursive(
     iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
     max_leaves=8,
 )
 
-iterable_iteration_tree = st.recursive(
+
+@st.composite
+def iteration_tree(draw) -> st.SearchStrategy:
+    tree = draw(iteration_tree_with_likely_config_root)
+
+    if isinstance(tree, Configurations) and tree.move_up:
+        Node = draw(st.sampled_from([CartesianProduct, Union]))
+        return Node({"config": tree}, lazy=False)
+
+    return draw(st.just(tree))
+
+
+iterable_iteration_tree_with_likely_config_root = st.recursive(
     iterable_iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
     max_leaves=8,
+)
+
+
+iterable_iteration_tree = iterable_iteration_tree_with_likely_config_root.filter(
+    lambda tree: not isinstance(tree, Configurations) or not tree.move_up
 )
 
 
@@ -272,7 +322,7 @@ class TestIteration(unittest.TestCase):
 
     ## Iteration nodes ##
 
-    @given(iteration_tree)
+    @given(iteration_tree())
     def test_iteration_tree_generation(self, tree: IterationTree):
         """
         This test is voluntarily left empty, in order to test tree strategies.
