@@ -288,7 +288,7 @@ class TestIteration(unittest.TestCase):
         self.assertEqual(iterator.is_forward(), reverses % 2 == 0)
 
     @given(iterable_iteration_tree)
-    def test_len_consistent_with_iterate(self, tree: IterationTree):
+    def test_len_consistent_with_iterate_finite(self, tree: IterationTree):
         try:
             n = len(tree)
             formatted_list = "\n".join(f" - {s}" for s in tree)
@@ -296,6 +296,17 @@ class TestIteration(unittest.TestCase):
             self.assertEqual(n, len(list(tree)))
         except InfiniteLength:
             return
+
+    @given(iterable_iteration_tree, st.integers(min_value=0, max_value=1000))
+    def test_infinite_tree_length_is_unbound(
+        self, tree: IterationTree, tested_length: int
+    ):
+        if tree.safe_len() is not None:
+            return
+
+        it = iter(tree)
+        for _ in range(tested_length):
+            next(it)
 
     @given(iterable_iteration_tree)
     def test_exhausted_iterator_is_exhausted(self, tree: IterationTree):
