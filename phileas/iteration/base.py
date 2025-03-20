@@ -5,6 +5,7 @@ iteration (data tree, pseudo data tree and iteration tree).
 
 import typing
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
@@ -310,12 +311,16 @@ class InfiniteLength(BaseException):
     pass
 
 
+@dataclass(frozen=True)
 class IterationTree(ABC):
     """
     Represents a set of data trees, as well as the way to iterate over them. In
     order to be able to get a single data tree from an iteration tree, they are
     able to build a default data tree, which (usually) has the same shape as the
     generated data tree.
+
+    An iteration tree cannot be modified, as it is a frozen `dataclass`.
+    Instead, a new one must be created from this one.
     """
 
     @abstractmethod
@@ -556,6 +561,7 @@ class IterationTree(ABC):
         raise NotImplementedError()
 
 
+@dataclass(frozen=True)
 class IterationLeaf(IterationTree):
     def _get(self, child_key: Key | _Child) -> IterationTree:
         raise TypeError("Iteration leaves do not support indexing.")
