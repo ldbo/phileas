@@ -294,9 +294,6 @@ class IntegerRangeIterator(TreeIterator[IntegerRange]):
         self.direction = 1 if tree.end > tree.start else -1
 
     def _current_value(self) -> DataTree:
-        if self.position < 0 or self.position > self.length:
-            raise StopIteration
-
         return self.tree.start + self.direction * self.position * self.tree.step
 
 
