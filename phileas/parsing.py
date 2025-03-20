@@ -15,10 +15,8 @@ import numpy as np
 from ruamel import yaml
 from ruamel.yaml import YAML
 
-from phileas.iteration.base import DataTree
-from phileas.iteration.leaf import NumpyRNG
-
-from . import iteration
+from phileas import iteration
+from phileas.iteration import Key, NumpyRNG
 
 # Warning: using the safe loader disables calling __post_init__ in dataclasses,
 # which effectively skips data verification in some custom YAML types. Using the
@@ -55,7 +53,60 @@ class YamlCustomType(ABC):
         raise NotImplementedError()
 
 
-# Numeric type of the Range
+@_iteration_tree_parser.register_class
+@dataclass
+class Configurations(YamlCustomType):
+    """
+    Configurations container. It holds a dictionary of configurations, and has
+    three optional arguments: `_default`, `_move_up` and `_insert_name`.
+
+    `_default` specifies the name of the default configuration.
+
+    `_move_up` is a boolean defaulting to `False`. If it is set, the content of
+    the chosen configuration will be moved one level up.
+
+    `_insert_name` is a boolean defaulting to `True`. If it is set, the name of
+    the chosen configuration will be inserted in the final `DataTree`. If
+    `move_up`, then it is assigned to the key that previously hold the
+    `!configurations` node. Otherwise, it is inserted under the name
+    `"_configuration"`.
+    """
+
+    yaml_tag: ClassVar[str] = "!configurations"
+    configurations: dict[Key, Any]
+    default: Key
+    move_up: bool
+    insert_name: bool
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
+        if isinstance(node, yaml.SequenceNode):
+            raise TypeError("Configurations must be stored in a named map.")
+        elif isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            default = mapping.pop("_default", None)
+            move_up = mapping.pop("_move_up", False)
+            insert_name = mapping.pop("_insert_name", True)
+            return Configurations(
+                configurations=mapping,
+                default=default,
+                move_up=move_up,
+                insert_name=insert_name,
+            )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Configurations(
+            {
+                name: raw_yaml_structure_to_iteration_tree(config)
+                for name, config in self.configurations.items()
+            },
+            default_configuration=self.default,
+            move_up=self.move_up,
+            insert_name=self.insert_name,
+        )
+
+
+#: Numeric type of the Range
 RT = TypeVar("RT", bound=int | float)
 
 
@@ -213,7 +264,7 @@ class Random(YamlCustomType):
     distribution: str
     parameters: dict[str, Any]
     size: int | None = None
-    default: DataTree | None = None
+    default: iteration.DataTree | None = None
 
     def to_iteration_tree(self) -> iteration.IterationTree:
         return NumpyRNG(
