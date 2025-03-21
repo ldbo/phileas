@@ -730,7 +730,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_configurations_sample(self):
+    def test_configurations_sample_nomoveup_noinsertname_node(self):
         tree = CartesianProduct(
             children={
                 "c": Configurations(
@@ -767,7 +767,29 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(config, expected_config)
 
-    def test_configurations_sample_moveup(self):
+    def test_configurations_sample_nomoveup_noinsertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=False,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": IterationLiteral(1),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup_noinsertname_node(self):
         tree = CartesianProduct(
             children={
                 "c": Configurations(
@@ -800,7 +822,24 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(config, expected_config)
 
-    def test_configurations_sample_moveup_insertname(self):
+    def test_configurations_sample_moveup_noinsertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=True,
+                    insert_name=False,
+                )
+            },
+        )
+
+        with self.assertRaises(ValueError):
+            tree.get_configuration("config1")
+
+    def test_configurations_sample_moveup_insertname_node(self):
         tree = CartesianProduct(
             children={
                 "c": Configurations(
@@ -834,7 +873,24 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(config, expected_config)
 
-    def test_configurations_sample_insertname(self):
+    def test_configurations_sample_moveup_insertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=True,
+                    insert_name=True,
+                )
+            },
+        )
+
+        with self.assertRaises(ValueError):
+            tree.get_configuration("config1")
+
+    def test_configurations_sample_nomoveup_insertname_node(self):
         tree = CartesianProduct(
             children={
                 "c": Configurations(
@@ -867,6 +923,29 @@ class TestIteration(unittest.TestCase):
                         "param2": IterationLiteral(value=12),
                     },
                 )
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_nomoveup_insertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=False,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "_c_configuration": IterationLiteral("config1"),
+                "c": IterationLiteral(1),
             },
         )
 
