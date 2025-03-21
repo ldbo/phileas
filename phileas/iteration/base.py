@@ -332,7 +332,8 @@ class IterationTree(ABC):
     def get_configuration(self, key: Key) -> "IterationTree":
         """
         Returns a given configuration of the tree, if it exists. Otherwise,
-        raises a `KeyError`.
+        raises a `KeyError`. See `Configurations` node for more details on the
+        behavior of this method.
         """
         if key not in self.configurations:
             raise KeyError(f"Configuration {key} does not exist.")

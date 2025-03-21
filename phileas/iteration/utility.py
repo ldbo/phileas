@@ -119,6 +119,26 @@ def recursive_union(tree1: DataTree, tree2: DataTree) -> DataTree:
     return union
 
 
+def is_transformed_iteration_leaf(tree: IterationTree) -> bool:
+    """
+    A transformed iteration leaf is an iteration tree that only contained
+    `Transform` and `IterationLeaf` nodes. That is, it does not contain
+    `IterationMethod`s.
+
+    This function checks if a tree is a transformed iteration leaf.
+    """
+    from phileas.iteration import Transform
+
+    while isinstance(tree, (Transform, IterationLeaf)):
+        if isinstance(tree, IterationLeaf):
+            return True
+
+        assert isinstance(tree, Transform)
+        tree = tree.child
+
+    return False
+
+
 def flatten_datatree(
     tree: DataTree | PseudoDataTree, key_prefix: None | str = None, separator: str = "."
 ) -> dict[str, DataLiteral | IterationLeaf] | DataLiteral | IterationLeaf:

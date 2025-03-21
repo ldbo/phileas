@@ -21,7 +21,6 @@ from .base import (
     ChildPath,
     DataTree,
     DefaultIndex,
-    IterationLeaf,
     IterationTree,
     Key,
     NoDefaultError,
@@ -148,22 +147,10 @@ class IterationMethod(IterationTree):
         update it with configuration `requested_config_name` from the child
         `configs`, identified by `configs_key`, of the current node.
         """
-
-        def update_dict(new_dict: dict[Key, IterationTree]):
-            new_keys = set(new_dict.keys())
-            conflicting_keys = set(children.keys()) & new_keys
-            children.update(new_dict)
-
-            if len(conflicting_keys) == 0:
-                return
-
-            logger.warning(
-                f"Overriding keys {conflicting_keys} during configuration access."
-            )
-
         from .leaf import IterationLiteral
 
         requested_config = configs._get_configuration(requested_config_name)
+        is_transformed_leaf = utility.is_transformed_iteration_leaf(requested_config)
         if configs.move_up:
             if not isinstance(requested_config, IterationMethod):
                 raise ValueError(
@@ -173,24 +160,52 @@ class IterationMethod(IterationTree):
             if not isinstance(requested_config.children, dict):
                 raise ValueError("Configurations with move_up must have dict children.")
 
-            update_dict(requested_config.children)
+            self.__config_update_children(children, requested_config.children)
 
             if configs.insert_name:
-                update_dict({configs_key: IterationLiteral(requested_config_name)})
-        else:  # not configs.move_up
+                self.__config_update_children(
+                    children, {configs_key: IterationLiteral(requested_config_name)}
+                )
+        elif is_transformed_leaf:  # and not configs.move_up
+            self.__config_update_children(children, {configs_key: requested_config})
+
+            if configs.insert_name:
+                name_key = f"_{configs_key}_configuration"
+                self.__config_update_children(
+                    children,
+                    {name_key: IterationLiteral(requested_config_name)},
+                )
+        else:  # not is_transformed_leaf and not configs.move_up
             if configs.insert_name:
                 try:
                     requested_config = requested_config.insert_child(
                         ["_configuration"], IterationLiteral(requested_config_name)
                     )
-                except TypeError as e:
-                    msg = (
-                        "Configurations with insert_name and not move_up must "
-                        "have dict-like children."
+                except TypeError:
+                    assert isinstance(requested_config, IterationMethod)
+                    assert isinstance(requested_config.children, list)
+                    name_key = f"_{configs_key}_configuration"
+                    self.__config_update_children(
+                        children,
+                        {name_key: IterationLiteral(requested_config_name)},
                     )
-                    raise TypeError(msg) from e
 
-            update_dict({configs_key: requested_config})
+            self.__config_update_children(children, {configs_key: requested_config})
+
+    @staticmethod
+    def __config_update_children(
+        children: dict[Key, IterationTree], new_dict: dict[Key, IterationTree]
+    ):
+        new_keys = set(new_dict.keys())
+        conflicting_keys = set(children.keys()) & new_keys
+        children.update(new_dict)
+
+        if len(conflicting_keys) == 0:
+            return
+
+        logger.warning(
+            f"Overriding keys {conflicting_keys} during configuration access."
+        )
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         if isinstance(self.children, list):
@@ -945,13 +960,6 @@ class Configurations(IterationMethod):
             and self.default_configuration not in self.children
         ):
             raise KeyError("Default configuration not in the children configurations.")
-
-        if self.move_up:
-            for child_value in self.children.values():
-                if isinstance(child_value, IterationLeaf):
-                    raise TypeError(
-                        "move_up configurations must be iteration nodes, not leaves."
-                    )
 
     def _get_configuration(self, config_name: Key) -> IterationTree:
         try:
