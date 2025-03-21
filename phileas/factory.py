@@ -481,7 +481,9 @@ class ExperimentFactory:
             if "interface" not in config:
                 continue
             interface = config["interface"]
-            assert isinstance(interface, str)
+
+            if not isinstance(interface, str):
+                raise ValueError(f"Non-str interface {interface} is not supported.")
 
             self.experiment_config = self.experiment_config.remove_child(
                 [name, "interface"]
@@ -490,7 +492,10 @@ class ExperimentFactory:
             # Get the filters
             try:
                 filter_dict = config["filter"]
-                assert isinstance(filter_dict, dict)
+
+                if not isinstance(filter_dict, dict):
+                    raise ValueError(f"filter field {filter_dict} must be a dict.")
+
                 self.experiment_config = self.experiment_config.remove_child(
                     [name, "filter"]
                 )

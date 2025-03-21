@@ -255,7 +255,10 @@ class IntegerRange(NumericRange[int | float]):
 
     def __post_init__(self):
         if self.step < 0 or (self.start != self.end and self.step == 0):
-            raise ValueError("Invalid step size")
+            raise ValueError("Invalid step size.")
+
+        if not isinstance(self.step, int):
+            raise ValueError("step must be an int.")
 
         if not isinstance(self.start, int):
             raise ValueError(f"start must be an int, {self.start} is not supported.")

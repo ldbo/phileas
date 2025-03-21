@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
+from typing_extensions import assert_never
+
 if TYPE_CHECKING:  # pragma: no cover
     from _typeshed import Self  # pragma: no cover
 else:
@@ -375,9 +377,10 @@ class IterationTree(ABC):
                 return no_default
             elif no_default_policy == NoDefaultPolicy.FIRST_ELEMENT:
                 return next(iter(self))
-            else:
-                assert no_default_policy == NoDefaultPolicy.SKIP
+            elif no_default_policy == NoDefaultPolicy.SKIP:
                 return no_default
+            else:
+                assert_never(no_default_policy)
 
     @abstractmethod
     def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
