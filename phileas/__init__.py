@@ -10,3 +10,10 @@ from .factory import (
     logger,
     register_default_loader,
 )
+
+if __debug__:
+    logger.warning(
+        "phileas code contains assertions that reduce its performances. "
+        "Consider running python with the -O or -OO flags, or setting the "
+        "PYTHONOPTIMIZE environment variable in production code."
+    )
