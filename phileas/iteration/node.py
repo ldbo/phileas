@@ -863,69 +863,126 @@ class LazifyIterator(TransformIterator[Lazify]):
 @dataclass(frozen=True)
 class Configurations(IterationMethod):
     """
-    It represents a set of configurations that can be invoked using
-    `IterationTree.get_configuration`. This allows to escape from the recursive
-    and local nature of trees: requesting a configuration on the root of the
-    tree returns a subset of it, which can change its global topology.
+    Represents a set of named configurations that can be invoked using
+    `IterationTree.get_configuration`. When it is called, with argument `name`,
+    all the `Configurations` nodes that have a matching configuration will be
+    replaced by it. Other ones will be replaced by their default value.
 
-    It holds a set of mapping of iteration trees, called *configurations*, which
-    are identified by their *name*. By default, the configurations are expected
-    to be thought of as dictionaries - that is, they are either literal
-    dictionaries, or iteration methods whose children are stored in a
-    dictionary -, and the `Configurations` node is supposed to be the child of
-    an iteration method. Calling `get_configuration` inserts the content of
-    the dictionary as siblings of the `Configurations` node. Additionally, the
-    `Configurations` node is replaced by the name of the requested
-    configuration.
+    This allows to escape from the recursive and local nature of trees: a single
+    call can modify nodes throughout a whole tree.
+
+    The `Configurations` node holds a set of iteration trees,
+    called *configurations*, which are identified by their *name*. Two
+    parameters, `move_up` and `insert_name`, control how
+    `IterationTree.get_configuration` behaves.
+
+    By default, `move_up == insert_name == False`. The `Configuration` node is
+    simply replaced by the content of the requested configuration.
 
     >>> tree = CartesianProduct({
-    ...     "instrument": CartesianProduct({
-    ...         "config_name": Configurations({
-    ...             "config1": CartesianProduct({
-    ...                 "param1": IterationLiteral(value="1-1"),
-    ...                 "param2": IterationLiteral(value="1-2"),
-    ...             }),
-    ...             "config2": CartesianProduct({
-    ...                 "param1": IterationLiteral(value="2-1"),
-    ...                 "param3": IterationLiteral(value="2-3"),
-    ...             })
+    ...     "instrument": Configurations({
+    ...         "config1": CartesianProduct({
+    ...             "param1": IterationLiteral(value="1-1"),
+    ...             "param2": IterationLiteral(value="1-2"),
+    ...         }),
+    ...         "config2": CartesianProduct({
+    ...             "param1": IterationLiteral(value="2-1"),
+    ...             "param3": IterationLiteral(value="2-3"),
     ...         })
     ...     })
     ... })
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
-    {'instrument': {'config_name': 'config1', 'param1': '1-1', 'param2': '1-2'}}
+    {'instrument': {'param1': '1-1', 'param2': '1-2'}}
 
-    Setting `move_up` to `False` changes this behaviour, so that the content of
-    the requested configuration is inserted in place of the `Configurations`
-    node. Additionally, `insert_name` allows to control whether the name of the
-    requested configuration is kept. If set, with `move_up == False`, the name
-    is inserted in the `_configuration` key.
+    If `move_up == True`, the content of the chosen configuration is moved one
+    level up, so that it is at the same level as the `Configurations` node.
+    This requires it to have an `IterationMethod` parent with `dict` children.
+    This can be used to factorize configurations.
 
     >>> tree = CartesianProduct({
-    ...     "instrument": CartesianProduct({
-    ...         "param_set": Configurations({
-    ...             "config1": CartesianProduct({
-    ...                 "param1": IterationLiteral(value="1-1"),
-    ...                 "param2": IterationLiteral(value="1-2"),
-    ...             }),
-    ...             "config2": CartesianProduct({
-    ...                 "param1": IterationLiteral(value="2-1"),
-    ...                 "param3": IterationLiteral(value="2-3"),
-    ...             })
-    ...         },
-    ...         move_up=False)
-    ...     })
+    ...     "_": Configurations({
+    ...         "config1": CartesianProduct({
+    ...             "param1": IterationLiteral(value="1-1"),
+    ...         }),
+    ...         "config2": CartesianProduct({
+    ...             "param1": IterationLiteral(value="2-1"),
+    ...         })
+    ...     }, move_up=True),
+    ...     "param2": IterationLiteral(value="2")
     ... })
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
-    {'instrument':
-        {'param_set':
-            {'_configuration': 'config1',
-             'param1': '1-1',
-             'param2': '1-2'
-            }
-        }
-    }
+    {'param1': '1-1', 'param2': '2'}
 
+    If `insert_name == True`, the name of the requested configuration is
+    inserted in the resulting tree. If the requested configuration allows it
+    (_ie_. it is an `IterationMethod` with `dict` children), the name is
+    inserted into itself, with the key `_configuration`.
+
+    >>> tree = CartesianProduct({
+    ...     "instrument": Configurations({
+    ...         "config1": CartesianProduct({
+    ...             "param1": IterationLiteral(value="1-1"),
+    ...             "param2": IterationLiteral(value="1-2"),
+    ...         }),
+    ...         "config2": CartesianProduct({
+    ...             "param1": IterationLiteral(value="2-1"),
+    ...             "param3": IterationLiteral(value="2-3"),
+    ...         })
+    ...     }, insert_name=True)
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'instrument': {'_configuration': 'config1', 'param1': '1-1', 'param2': '1-2'}}
+
+    If, additionally, `move_up == True`, the name of the configuration is
+    inserted instead of the `Configurations` node.
+
+    >>> tree = CartesianProduct({
+    ...     "instrument": Configurations({
+    ...         "config1": CartesianProduct({
+    ...             "param1": IterationLiteral(value="1-1"),
+    ...             "param2": IterationLiteral(value="1-2"),
+    ...         }),
+    ...         "config2": CartesianProduct({
+    ...             "param1": IterationLiteral(value="2-1"),
+    ...             "param3": IterationLiteral(value="2-3"),
+    ...         })
+    ...     }, insert_name=True, move_up=True)
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'instrument': 'config1', 'param1': '1-1', 'param2': '2'}
+
+    However, if the requested configuration is not an `IterationMethod`, its
+    `name` is inserted as a sibling, assigned to the key `f"_{name}_configuration"`.
+
+    >>> tree = CartesianProduct({
+    ...     "param": Configurations({
+    ...         "config1": IterationLiteral(value="1"),
+    ...         "config2": IterationLiteral(value="2"),
+    ...     }, insert_name=True),
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'_param_configuration': 'config1', 'param': '1'}
+
+    This means that the content of the configurations affects how they are
+    handled. Although this might change in the future, it is made to support
+    most situations. It is recommended to keep all the configurations with the
+    same shape.
+
+    The `insert_name` is not necessary. It is possible to replace it with the
+    following kind of tree:
+
+    >>> tree = CartesianProduct({
+    ...     "param": Configurations({
+    ...         "config1": IterationLiteral(value="1"),
+    ...         "config2": IterationLiteral(value="2"),
+    ...     },
+    ...     "config": Configurations({
+    ...         "config1": IterationLiteral(value="config1"),
+    ...         "config2": IterationLiteral(value="config2"),
+    ...     })),
+    ... })
+    >>> tree.get_configuration("config1").to_pseudo_data_tree()
+    {'param': '1', 'config': 'config1'}
     """
 
     children: dict[Key, IterationTree]
@@ -940,13 +997,13 @@ class Configurations(IterationMethod):
     #:
     #:  Otherwise, the content is inserted at the same level as the
     #:  configurations themselves.
-    move_up: bool = True
+    move_up: bool = False
 
     #: If set, insert the name of the requested configuration when calling
     #: `get_configuration`. If `move_up`, then the `Configurations` node is
     #: replaced by this name. Otherwise, a `"_configuration"` sibling node is
     #: inserted.
-    insert_name: bool = True
+    insert_name: bool = False
 
     def __post_init__(self):
         super().__post_init__()

@@ -65,11 +65,14 @@ class Configurations(YamlCustomType):
     `_move_up` is a boolean defaulting to `False`. If it is set, the content of
     the chosen configuration will be moved one level up.
 
-    `_insert_name` is a boolean defaulting to `True`. If it is set, the name of
+    `_insert_name` is a boolean defaulting to `False`. If it is set, the name of
     the chosen configuration will be inserted in the final `DataTree`. If
     `move_up`, then it is assigned to the key that previously hold the
     `!configurations` node. Otherwise, it is inserted under the name
     `"_configuration"`.
+
+    See `iteration.Configurations` for more details on the impact of `_move_up`
+    and `_insert_name`.
     """
 
     yaml_tag: ClassVar[str] = "!configurations"
@@ -86,7 +89,7 @@ class Configurations(YamlCustomType):
             mapping = constructor.construct_mapping(node, deep=True)
             default = mapping.pop("_default", None)
             move_up = mapping.pop("_move_up", False)
-            insert_name = mapping.pop("_insert_name", True)
+            insert_name = mapping.pop("_insert_name", False)
             return Configurations(
                 configurations=mapping,
                 default=default,
