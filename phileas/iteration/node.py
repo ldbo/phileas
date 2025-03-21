@@ -7,6 +7,7 @@ import collections.abc
 import dataclasses
 import math
 from abc import abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import accumulate
@@ -164,7 +165,7 @@ class IterationMethod(IterationTree):
         if isinstance(child_key, _Child):
             raise KeyError("Iteration method does not support Child() index.")
 
-        return self.children[child_key]  # type: ignore[index]
+        return deepcopy(self.children[child_key])  # type: ignore[index]
 
     def _insert_child(
         self, child_key: Key | _Child, child: IterationTree
@@ -172,12 +173,14 @@ class IterationMethod(IterationTree):
         if isinstance(child_key, _Child):
             raise KeyError("Iteration method does not support Child() index.")
 
-        self.children[child_key] = child  # type: ignore[index]
-        return self
+        new_children = deepcopy(self.children)
+        new_children[child_key] = child  # type: ignore[index]
+        return dataclasses.replace(self, children=new_children)
 
     def _remove_child(self, child_key: Key | _Child) -> IterationTree:
-        _ = self.children.pop(child_key)  # type: ignore[arg-type]
-        return self
+        new_children = deepcopy(self.children)
+        _ = new_children.pop(child_key)  # type: ignore[arg-type]
+        return dataclasses.replace(self, children=new_children)
 
     def _replace_root(
         self, Node: type[IterationTree], *args, **kwargs
@@ -185,7 +188,7 @@ class IterationMethod(IterationTree):
         if not issubclass(Node, IterationMethod):
             raise TypeError(f"Cannot replace an iteration method with a {Node}")
 
-        return Node(self.children, *args, **kwargs)
+        return Node(deepcopy(self.children), *args, **kwargs)
 
     def _depth_first_modify(
         self,
@@ -204,7 +207,9 @@ class IterationMethod(IterationTree):
                 for position, child in self.children.items()
             }
 
-        return modifier(dataclasses.replace(self, children=new_children), path)
+        return modifier(
+            dataclasses.replace(self, children=deepcopy(new_children)), path
+        )
 
 
 T = TypeVar("T", bound=IterationMethod, covariant=True)
