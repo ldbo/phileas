@@ -926,7 +926,10 @@ class Configurations(IterationMethod):
     replaced by it. Other ones will be replaced by their default value.
 
     This allows to escape from the recursive and local nature of trees: a single
-    call can modify nodes throughout a whole tree.
+    call can modify nodes throughout a whole tree. However, it is often
+    convenient to convert configurable trees back to classical,
+    non-configurable trees. This is done by
+    `IterationTree.unroll_configurations()`.
 
     The `Configurations` node holds a set of iteration trees,
     called *configurations*, which are identified by their *name*. Two

@@ -7,8 +7,7 @@ import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from itertools import accumulate
-from typing import TYPE_CHECKING, Any, Callable, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 from typing_extensions import assert_never
 
@@ -17,6 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover
 else:
     Self = Any
 
+from ..logging import logger
 from ..utility import Sentinel
 
 #################
@@ -351,6 +351,22 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
+    def unroll_configurations(self) -> "IterationTree":
+        """
+        Transforms a configurable tree, *ie*. one with `configurations !={}`, to
+        a non-configurable tree. It requests all the available configurations,
+        and gather them into a `Union` node with `reset=False`. A
+        `MoveUpTransform` is used to get rid of the name of the
+        configurations.
+        """
+        from phileas.iteration import Union
+        from phileas.iteration.node import MoveUpTransform
+
+        children = {name: self.get_configuration(name) for name in self.configurations}
+        configurations = Union(children, reset=False)
+
+        return MoveUpTransform(configurations)
+
     def __iter__(self) -> TreeIterator:
         """
         Return a two-way resetable tree iterator.
@@ -358,7 +374,13 @@ class IterationTree(ABC):
         if len(self.configurations) == 0:
             return self._iter()
 
-        return ConfigurableTreeIterator(self)
+        logger.warning(
+            "Iterating through a configurable tree. It is automatically "
+            "unrolled, but it is advised to explicitly call "
+            "IterationTree.unroll_configurations before iteration."
+        )
+
+        return iter(self.unroll_configurations())
 
     @abstractmethod
     def _iter(self) -> TreeIterator:
@@ -615,38 +637,6 @@ class IterationTree(ABC):
         different node types.
         """
         raise NotImplementedError()
-
-
-class ConfigurableTreeIterator(TreeIterator[IterationTree]):
-    """
-    This iterator handles iteration through the different configurations of a
-    tree. Configurations are iterated over following the order of their names.
-    """
-
-    #: Ordered iterators over each of the tree configurations
-    iterators: Sequence[TreeIterator]
-
-    #: Cumulated sum of the iterated sizes of the children, with a prepended 0.
-    cumsizes: list[int]
-
-    def __init__(self, tree: IterationTree) -> None:
-        super().__init__(tree)
-
-        configurations = [
-            self.tree.get_configuration(config)
-            for config in sorted(self.tree.configurations)
-        ]
-        self.iterators = [iter(config) for config in configurations]
-        self.cumsizes = list(
-            accumulate([len(config) for config in configurations], initial=0)
-        )
-
-    def _current_value(self) -> DataTree:
-        config = (
-            next(pos for pos, cs in enumerate(self.cumsizes) if cs > self.position) - 1
-        )
-        config_pos = self.position - self.cumsizes[config]
-        return self.iterators[config][config_pos]
 
 
 @dataclass(frozen=True)
