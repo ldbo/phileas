@@ -3,6 +3,7 @@ This module contains the definition of the base type and classes used for
 iteration (data tree, pseudo data tree and iteration tree).
 """
 
+import dataclasses
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -477,11 +478,29 @@ class IterationTree(ABC):
 
     # Path API
     #
-    # Internal nodes, and the structure, of iteration trees are to be modified
+    # Internal nodes and the structure of iteration trees are to be modified
     # using a path-based API.
     #
     # After using a modification function, only the output of the function
     # should be used, and `self` should be discarded.
+
+    def with_params(self, path=ChildPath | None, **kwargs) -> "IterationTree":
+        """
+        Returns a similar iteration tree, where the node at `path` is assigned
+        the given keyword parameters. If `path` is not specified, modifies the
+        root of the tree directly.
+        """
+        valid_path = []
+        if path is not None:
+            valid_path = path
+
+        def modifier(tree: IterationTree, path: ChildPath) -> IterationTree:
+            if path == valid_path:
+                return dataclasses.replace(tree, **kwargs)
+
+            return tree
+
+        return self.depth_first_modify(modifier)
 
     def get(self, path: ChildPath) -> "IterationTree":
         """
