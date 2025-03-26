@@ -3,6 +3,7 @@ import datetime
 import itertools
 import math
 import unittest
+from typing import assert_never
 
 import hypothesis
 import numpy as np
@@ -157,39 +158,52 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
         | st.dictionaries(data_literal, children_st, min_size=1, max_size=4)
     )
 
-    node_types = [CartesianProduct, Union]
+    node_types: list[type[IterationMethod]] = [
+        CartesianProduct,
+        Union,
+    ]
     if isinstance(children, dict):
         node_types.append(Configurations)
+
     Node = draw(st.sampled_from(node_types))
 
-    if Node != Configurations:
+    if Node == CartesianProduct:
         return Node(children, lazy=False)
+    elif Node == Union:
+        reset = True
+        if isinstance(children, dict):
+            reset = draw(st.booleans())
+        return Union(children, lazy=False, reset=reset)
+    elif Node == Configurations:
+        assert isinstance(children, dict)
+        assert Node == Configurations
 
-    assert isinstance(children, dict)
-    assert Node == Configurations
+        move_up = False
+        insert_name = False
+        if all(
+            isinstance(c, IterationMethod)
+            and not isinstance(c, Configurations)
+            and isinstance(c.children, dict)
+            for c in children.values()
+        ):
+            move_up = draw(st.booleans())
 
-    move_up = False
-    insert_name = False
-    if all(
-        isinstance(c, IterationMethod) and isinstance(c.children, dict)
-        for c in children.values()
-    ):
-        move_up = draw(st.booleans())
+            if move_up:
+                insert_name = False
+            else:
+                insert_name = draw(st.booleans())
 
-        if move_up:
-            insert_name = False
-        else:
-            insert_name = draw(st.booleans())
+        default_child = draw(st.sampled_from(list(children.keys())))
 
-    default_child = draw(st.sampled_from(list(children.keys())))
-
-    return Configurations(
-        children,
-        lazy=False,
-        move_up=move_up,
-        insert_name=insert_name,
-        default_configuration=default_child,
-    )
+        return Configurations(
+            children,
+            lazy=False,
+            move_up=move_up,
+            insert_name=insert_name,
+            default_configuration=default_child,
+        )
+    else:
+        assert_never(Node)
 
 
 class IdTransform(Transform):
@@ -214,7 +228,10 @@ def iteration_tree(draw) -> st.SearchStrategy:
 
     if isinstance(tree, Configurations) and tree.move_up:
         Node = draw(st.sampled_from([CartesianProduct, Union]))
-        return Node({"config": tree}, lazy=False)
+        children = {"config": tree}
+        for _ in range(draw(st.integers(min_value=0, max_value=3))):
+            children[draw(key)] = draw(iteration_tree())
+        return Node(children, lazy=False)
 
     return draw(st.just(tree))
 

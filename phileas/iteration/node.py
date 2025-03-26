@@ -10,8 +10,7 @@ from abc import abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import reduce
-from itertools import accumulate, chain
-from operator import mul
+from itertools import chain
 from typing import Callable, Sequence, TypeVar
 
 from phileas.iteration import utility
@@ -154,7 +153,8 @@ class IterationMethod(IterationTree):
         if configs.move_up:
             if not isinstance(requested_config, IterationMethod):
                 raise ValueError(
-                    "Configurations with move_up must be iteration methods."
+                    "Configurations with move_up must only have iteration "
+                    "methods children."
                 )
 
             if not isinstance(requested_config.children, dict):
@@ -460,57 +460,58 @@ class CartesianProduct(IterationMethod):
 
 
 class CartesianProductIterator(IterationMethodIterator[CartesianProduct]):
-    #: Backward cumulated products of the `sizes` after the last infinite one.
-    #: It has an additional 1 at the end.
-    #:
-    #: TBR
     #: Backward cumulated products of `sizes`, with `size` + 1 elements, and
-    #: ending at 1.
-    cumsizes: list[int]
-
-    last_infinite_index: int
+    #: ending with a 1. Before, and including, the last infinite child, it only
+    #: contains `None`.
+    cumsizes: list[int | None]
 
     def __init__(self, product: CartesianProduct):
         super().__init__(product)
+        n = len(self.tree.children)
+        self.cumsizes = [None] * n + [1]
 
-        self.last_infinite_index = (
-            len(self.sizes)
-            - next(i for i, s in enumerate(self.sizes[::-1] + [None]) if s is None)
-            - 1
-        )
+        accumulated_size = 1
+        child_size: int | None = -1
+        child_position = -2
+        for child_position in range(n - 1, -1, -1):
+            child_size = self.sizes[child_position]
+            if child_size is None:
+                break
 
-        if self.last_infinite_index > 0:
+            accumulated_size *= child_size
+            self.cumsizes[child_position] = accumulated_size
+
+        if child_size is None:
             logger.warning(
                 "A cartesian product contains an infinite tree at position "
-                f"{self.last_infinite_index}. During iteration, its preceding "
-                "siblings will always yield their first value."
+                f"{child_position}. During iteration, its preceding siblings "
+                "will always yield their first value."
             )
 
-        last_finite_sizes = self.sizes[self.last_infinite_index + 1 :]
-        self.cumsizes = list(accumulate(reversed(last_finite_sizes), mul, initial=1))
-        self.cumsizes.reverse()
-
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex]:
-        # -2 indicates an invalid value
-        positions = [-2 for _ in self.iterators]
+        positions = [0 for _ in self.iterators]
+        for i in range(len(self.iterators) - 1, -1, -1):
+            cumsize = self.cumsizes[i]
+            previous_cumsize = self.cumsizes[i + 1]
+            assert isinstance(previous_cumsize, int)
 
-        for i in range(len(self.iterators) - 1, self.last_infinite_index, -1):
-            j = i - (self.last_infinite_index + 1)
-            row_pos = (position % self.cumsizes[j]) // self.cumsizes[j + 1]
-            forward = (position // self.cumsizes[j]) % 2 == 0
+            if cumsize is None:
+                row_pos = position // previous_cumsize
+                forward = True
+            else:
+                row_pos = (position % cumsize) // previous_cumsize
+                forward = (position // cumsize) % 2 == 0
 
             if not forward and self.tree.snake:
-                current_size = self.sizes[i]
-                assert current_size is not None
-                positions[i] = current_size - 1 - row_pos
+                size = self.sizes[i]
+                assert isinstance(size, int)
+                positions[i] = size - 1 - row_pos
             else:
                 positions[i] = row_pos
 
-        if self.last_infinite_index > -1:
-            positions[self.last_infinite_index] = position // self.cumsizes[0]
-            positions[: self.last_infinite_index] = [0] * self.last_infinite_index
+            if cumsize is None:
+                break
 
-        assert all(pos != -2 for pos in positions)
         return positions
 
 
@@ -532,6 +533,17 @@ class Union(IterationMethod):
      - their first value otherwise.
     """
 
+    #: If set, reset the children to their default value once they are not
+    #: iterated over. Otherwise, only the currently iterated child is returned.
+    #: Not that it implies `lazy`, and is not applicable to `list` children.
+    reset: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if not self.reset and isinstance(self.children, list):
+            raise ValueError("Union with reset = False must have dict children.")
+
     def _iter(self) -> TreeIterator:
         return UnionIterator(self)
 
@@ -545,11 +557,15 @@ class Union(IterationMethod):
         no_default = [_has_no_default(child) for child in children]
         children_without_default = sum(no_default)
 
-        return (
-            sum(map(len, children))
-            - children_without_default
-            + int(children_without_default > 0)
-        )
+        summed_child_lengths = sum(map(len, children))
+        if self.reset:
+            return (
+                summed_child_lengths
+                - children_without_default
+                + int(children_without_default > 0)
+            )
+        else:
+            return summed_child_lengths
 
 
 class UnionIterator(IterationMethodIterator[Union]):
@@ -590,24 +606,35 @@ class UnionIterator(IterationMethodIterator[Union]):
 
                 break
 
-            cumsize += size - int(no_default) + int(self.first_without_default == i)
+            cumsize += size
+            if self.tree.reset:
+                if no_default:
+                    cumsize -= 1
+                if self.first_without_default == i:
+                    cumsize += 1
+
             self.cumsizes[i + 1] = cumsize
 
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
-        positions: list[int | DefaultIndex] = [0] * len(self.iterators)
+        positions: list[int | DefaultIndex | None] = [0] * len(self.iterators)
         pos = position
+
         for i in range(len(self.iterators)):
             if self.cumsizes[i] <= pos < self.cumsizes[i + 1]:
                 cumsize = self.cumsizes[i]
                 assert isinstance(cumsize, int)
-                positions[i] = (
-                    pos
-                    - cumsize
-                    + int(self.no_default[i])
-                    - int(self.first_without_default == i)
-                )
+
+                child_pos = pos - cumsize
+                if self.tree.reset:
+                    child_pos += int(self.no_default[i]) - int(
+                        self.first_without_default == i
+                    )
+
+                positions[i] = child_pos
             else:
-                if self.no_default[i]:
+                if not self.tree.reset:
+                    positions[i] = None
+                elif self.no_default[i]:
                     positions[i] = 0
                 else:
                     positions[i] = DefaultIndex()
