@@ -36,6 +36,7 @@ from phileas.iteration import (
     Transform,
     Union,
 )
+from phileas.iteration.base import ChildPath
 from phileas.iteration.utility import (
     flatten_datatree,
     generate_seeds,
@@ -746,6 +747,29 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    @given(iteration_tree())
+    def test_requested_configuration_is_not_configurable(self, tree: IterationTree):
+        def assert_not_configurable(
+            tree: IterationTree, path: ChildPath
+        ) -> IterationTree:
+            try:
+                self.assertEqual(tree.configurations, set())
+            except AssertionError:
+                hypothesis.note(f"Configurable path: {path}")
+                raise
+
+            return tree
+
+        for name in tree.configurations:
+            configured_tree = tree.get_configuration(name)
+            try:
+                configured_tree.depth_first_modify(assert_not_configurable)
+            except AssertionError:
+                hypothesis.note(f"Configuration: {name}")
+                hypothesis.note(f"Configured tree: {configured_tree}")
+                hypothesis.note(f"Configurable tree: {tree}")
+                raise
 
     def test_configurations_sample_nomoveup_noinsertname_node(self):
         tree = CartesianProduct(

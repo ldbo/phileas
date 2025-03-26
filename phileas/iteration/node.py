@@ -111,7 +111,7 @@ class IterationMethod(IterationTree):
         return frozenset(chain(*children_configurations))
 
     def _get_configuration(self, config_name: Key) -> "IterationTree":
-        if config_name not in self.configurations:
+        if self.configurations == {}:
             return self
 
         new_children: list[IterationTree] | dict[Key, IterationTree]
@@ -734,7 +734,7 @@ class Transform(IterationTree):
     # Configurations
 
     def _get_configuration(self, config_name: Key) -> IterationTree:
-        if config_name not in self.configurations:
+        if self.configurations == {}:
             return self
 
         return self._insert_child(_Child(), self.child._get_configuration(config_name))
@@ -1047,10 +1047,12 @@ class Configurations(IterationMethod):
 
     def _get_configuration(self, config_name: Key) -> IterationTree:
         try:
-            return self.children[config_name]
+            return self.children[config_name]._get_configuration(config_name)
         except KeyError as e:
             if self.default_configuration is not None:
-                return self.children[self.default_configuration]
+                return self.children[self.default_configuration]._get_configuration(
+                    config_name
+                )
             else:
                 raise KeyError(
                     f"Missing configuration {config_name}, with no default "
