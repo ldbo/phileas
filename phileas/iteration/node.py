@@ -888,6 +888,36 @@ class LazifyIterator(TransformIterator[Lazify]):
 
 
 @dataclass(frozen=True)
+class MoveUpTransform(Transform):
+    insert_name: bool | str = False
+
+    def transform(self, data_tree: DataTree) -> DataTree:
+        if not isinstance(data_tree, dict) or len(data_tree) != 1:
+            raise ValueError("MopeUpTransform expects a dict with a single child.")
+
+        (key,) = list(data_tree.keys())
+        (child,) = list(data_tree.values())
+
+        if self.insert_name is not False:
+            if not isinstance(child, dict):
+                raise ValueError(
+                    "MoveUpTransform with insert_name expects a dict children."
+                )
+
+            assert isinstance(child, dict)
+            if self.insert_name is True:
+                child["_key"] = key
+            else:
+                assert isinstance(self.insert_name, str)
+                child[self.insert_name] = key
+
+        return child
+
+
+### Configurations ###
+
+
+@dataclass(frozen=True)
 class Configurations(IterationMethod):
     """
     Represents a set of named configurations that can be invoked using
