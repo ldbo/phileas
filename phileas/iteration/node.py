@@ -3,6 +3,8 @@ This module defines abstract and concrete iteration tree nodes, which are
 iteration methods and transform nodes, as well as their iterators.
 """
 
+from __future__ import annotations
+
 import collections.abc
 import dataclasses
 import math
@@ -110,7 +112,7 @@ class IterationMethod(IterationTree):
 
         return frozenset(chain(*children_configurations))
 
-    def _get_configuration(self, config_name: Key) -> "IterationTree":
+    def _get_configuration(self, config_name: Key) -> IterationTree:
         if self.configurations == {}:
             return self
 
@@ -139,7 +141,7 @@ class IterationMethod(IterationTree):
         children: dict[Key, IterationTree],
         requested_config_name: Key,
         configs_key: Key,
-        configs: "Configurations",
+        configs: Configurations,
     ):
         """
         Given a dict containing the currently processed `children` of the tree,
@@ -727,7 +729,7 @@ class Transform(IterationTree):
         self,
         modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
         path: ChildPath,
-    ) -> "IterationTree":
+    ) -> IterationTree:
         new_child = self.child._depth_first_modify(modifier, path + [child])
         return modifier(dataclasses.replace(self, child=new_child), path)
 

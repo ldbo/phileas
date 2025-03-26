@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 import operator
 from abc import ABC, abstractmethod
@@ -37,9 +39,9 @@ class Loader(ABC):
     #: Reference to the instrument factory which has instantiated the loader.
     #: This allows loaders to have access, among other things, to already
     #: instantiated instruments.
-    instruments_factory: "ExperimentFactory"
+    instruments_factory: ExperimentFactory
 
-    def __init__(self, instruments_factory: "ExperimentFactory"):
+    def __init__(self, instruments_factory: ExperimentFactory):
         """
         When subclassing `Loader`, the signature of the constructor should not
         be modified, and this constructor should be called.

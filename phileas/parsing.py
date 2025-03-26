@@ -4,6 +4,8 @@ to data and iteration trees, as defined in the `iteration` module. In
 particular, it defines the supported custom YAML types.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import ceil
@@ -82,10 +84,10 @@ class Configurations(YamlCustomType):
     insert_name: bool
 
     @classmethod
-    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
-        if isinstance(node, yaml.SequenceNode):
-            raise TypeError("Configurations must be stored in a named map.")
-        elif isinstance(node, yaml.MappingNode):
+    def from_yaml(
+        cls, constructor: yaml.Constructor, node: yaml.Node
+    ) -> Configurations:
+        if isinstance(node, yaml.MappingNode):
             mapping = constructor.construct_mapping(node, deep=True)
             default = mapping.pop("_default", None)
             move_up = mapping.pop("_move_up", False)
@@ -96,6 +98,8 @@ class Configurations(YamlCustomType):
                 move_up=move_up,
                 insert_name=insert_name,
             )
+        else:
+            raise TypeError("Configurations must be stored in a named map.")
 
     def to_iteration_tree(self) -> iteration.IterationTree:
         return iteration.Configurations(
@@ -223,7 +227,7 @@ class Sequence(YamlCustomType):
     default: iteration.DataTree | None = None
 
     @classmethod
-    def to_yaml(cls, representer: yaml.Representer, node: "Sequence"):
+    def to_yaml(cls, representer: yaml.Representer, node: Sequence):
         if node.default is None:
             return representer.represent_sequence(cls.yaml_tag, node.elements)
 
@@ -232,7 +236,7 @@ class Sequence(YamlCustomType):
         )
 
     @classmethod
-    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Sequence:
         if isinstance(node, yaml.SequenceNode):
             elements = constructor.construct_sequence(node, deep=True)
             default = None

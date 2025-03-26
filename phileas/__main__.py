@@ -104,8 +104,8 @@ def generate_script(
     if bench is not None and experiment is not None and experiment_config is not None:
         try:
             importlib.import_module(experiment_config)
-        except:
-            import experiment_config
+        except ImportError:
+            import experiment_config  # type: ignore[import-not-found]
 
         factory = phileas.ExperimentFactory(bench, experiment)
         instruments_and_type = []

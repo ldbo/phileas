@@ -3,6 +3,8 @@ This module contains the definition of the base type and classes used for
 iteration (data tree, pseudo data tree and iteration tree).
 """
 
+from __future__ import annotations
+
 import dataclasses
 import typing
 from abc import ABC, abstractmethod
@@ -276,7 +278,7 @@ class NoDefaultError(Exception):
         self.path = path
 
     @staticmethod
-    def build_from(tree: "IterationTree") -> "NoDefaultError":
+    def build_from(tree: IterationTree) -> NoDefaultError:
         return NoDefaultError(f"{tree.__class__.__name__} without a default value.", [])
 
     def __str__(self):
@@ -330,7 +332,7 @@ class IterationTree(ABC):
         default_factory=frozenset, init=False, repr=False
     )
 
-    def get_configuration(self, key: Key) -> "IterationTree":
+    def get_configuration(self, key: Key) -> IterationTree:
         """
         Returns a given configuration of the tree, if it exists. Otherwise,
         raises a `KeyError`. See `Configurations` node for more details on the
@@ -342,7 +344,7 @@ class IterationTree(ABC):
         return self._get_configuration(key)
 
     @abstractmethod
-    def _get_configuration(self, config_name: Key) -> "IterationTree":
+    def _get_configuration(self, config_name: Key) -> IterationTree:
         """
         Actual implementation of the configuration access in sub-classes.
 
@@ -352,7 +354,7 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
-    def unroll_configurations(self) -> "IterationTree":
+    def unroll_configurations(self) -> IterationTree:
         """
         Transforms a configurable tree, *ie*. one with `configurations !={}`, to
         a non-configurable tree. It requests all the available configurations,
@@ -469,7 +471,7 @@ class IterationTree(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def __getitem__(self, key: Key) -> "IterationTree":
+    def __getitem__(self, key: Key) -> IterationTree:
         """
         It is implemented to allow working with an iteration tree as if it
         consisted of nested list and dict objects.
@@ -484,7 +486,7 @@ class IterationTree(ABC):
     # After using a modification function, only the output of the function
     # should be used, and `self` should be discarded.
 
-    def with_params(self, path=ChildPath | None, **kwargs) -> "IterationTree":
+    def with_params(self, path=ChildPath | None, **kwargs) -> IterationTree:
         """
         Returns a similar iteration tree, where the node at `path` is assigned
         the given keyword parameters. If `path` is not specified, modifies the
@@ -502,7 +504,7 @@ class IterationTree(ABC):
 
         return self.depth_first_modify(modifier)
 
-    def get(self, path: ChildPath) -> "IterationTree":
+    def get(self, path: ChildPath) -> IterationTree:
         """
         Get a node inside a tree. It should not be used to modify the tree.
         """
@@ -513,7 +515,7 @@ class IterationTree(ABC):
         return current
 
     @abstractmethod
-    def _get(self, child_key: Key | _Child) -> "IterationTree":
+    def _get(self, child_key: Key | _Child) -> IterationTree:
         """
         Returns the root child with the given key, or raises a `KeyError` if
         there is no child with this key.
@@ -522,15 +524,15 @@ class IterationTree(ABC):
 
     @abstractmethod
     def _insert_child(
-        self, child_key: Key | _Child, child: "IterationTree"
-    ) -> "IterationTree":
+        self, child_key: Key | _Child, child: IterationTree
+    ) -> IterationTree:
         """
         Insert a new child tree to the root and return the newly created tree.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def _remove_child(self, child_key: Key | _Child) -> "IterationTree":
+    def _remove_child(self, child_key: Key | _Child) -> IterationTree:
         """
         Remove a child of the root, and return the newly created tree. Raises a
         `KeyError` if there is no child with this key.
@@ -539,8 +541,8 @@ class IterationTree(ABC):
 
     @abstractmethod
     def _replace_root(
-        self, Node: type["IterationTree"], *args, **kwargs
-    ) -> "IterationTree":
+        self, Node: type[IterationTree], *args, **kwargs
+    ) -> IterationTree:
         """
         Change the root node of a tree, keeping the remaining of the tree
         unmodified. In order to keep a valid tree structure, `Node` must have
@@ -550,8 +552,8 @@ class IterationTree(ABC):
         raise NotImplementedError()
 
     def insert_child(
-        self, path: ChildPath, tree: typing.Union["IterationTree", None]
-    ) -> "IterationTree":
+        self, path: ChildPath, tree: IterationTree | None
+    ) -> IterationTree:
         """
         Insert a child anywhere in the tree, whose location is specified by path
         argument. Return the newly created tree.
@@ -585,15 +587,15 @@ class IterationTree(ABC):
             assert new_child is not None
             return self._insert_child(key, new_child)
 
-    def remove_child(self, path: ChildPath) -> "IterationTree":
+    def remove_child(self, path: ChildPath) -> IterationTree:
         """
         Remove a node in a tree. It is equivalent to `insert_child(path, None)`.
         """
         return self.insert_child(path, None)
 
     def insert_transform(
-        self, path: ChildPath, Parent: type["Transform"], *args, **kwargs
-    ) -> "IterationTree":
+        self, path: ChildPath, Parent: type[Transform], *args, **kwargs
+    ) -> IterationTree:
         """
         Insert a parent to the node at the given path, parent which is
         necessarily a transform node, as it will only have a single child. The
@@ -616,8 +618,8 @@ class IterationTree(ABC):
         return new_me
 
     def replace_node(
-        self, path: ChildPath, Node: type["IterationTree"], *args, **kwargs
-    ) -> "IterationTree":
+        self, path: ChildPath, Node: type[IterationTree], *args, **kwargs
+    ) -> IterationTree:
         """
         Replace the node at the given path with another one. The other node is
         built using its type, `Node`, and the `args` and `kwargs` arguments.
@@ -637,8 +639,8 @@ class IterationTree(ABC):
             return new_me
 
     def depth_first_modify(
-        self, modifier: Callable[["IterationTree", ChildPath], "IterationTree"]
-    ) -> "IterationTree":
+        self, modifier: Callable[[IterationTree, ChildPath], IterationTree]
+    ) -> IterationTree:
         """
         Using a post-fix depth-first search, replace each `node` of the tree,
         located at `path`, with `modifier(node, path)`.
@@ -648,9 +650,9 @@ class IterationTree(ABC):
     @abstractmethod
     def _depth_first_modify(
         self,
-        modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
+        modifier: Callable[[IterationTree, ChildPath], IterationTree],
         path: ChildPath,
-    ) -> "IterationTree":
+    ) -> IterationTree:
         """
         Recursive implementation of `depth_first_modify`, implemented by the
         different node types.
@@ -683,11 +685,11 @@ class IterationLeaf(IterationTree):
         self,
         modifier: Callable[["IterationTree", ChildPath], "IterationTree"],
         path: ChildPath,
-    ) -> "IterationTree":
+    ) -> IterationTree:
         return modifier(self, path)
 
-    def __getitem__(self, key: Key) -> "IterationTree":
+    def __getitem__(self, key: Key) -> IterationTree:
         raise TypeError(f"{self.__class__.__name__} does not support indexing.")
 
-    def _get_configuration(self, config_name: Key) -> "IterationTree":
+    def _get_configuration(self, config_name: Key) -> IterationTree:
         return self
