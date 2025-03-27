@@ -28,7 +28,10 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.leaf import NumpyRNG, Seed
-from phileas.iteration.utility import flatten_datatree
+from phileas.iteration.utility import (
+    flatten_datatree,
+    iteration_tree_to_xarray_parameters,
+)
 
 # Some tests are close to the 200 ms limit after which hypothesis classifies
 # the test as an error, so increase it.
@@ -586,3 +589,13 @@ class TestIteration(unittest.TestCase):
         }
         flattened_tree = flatten_datatree(tree)
         self.assertEqual(expected_flat_tree, flattened_tree)
+
+    @given(iterable_iteration_tree)
+    def test_iteration_tree_to_xarray_parameters_raises_no_error(
+        self, tree: IterationTree
+    ):
+        import numpy as np
+        import xarray as xr
+
+        coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+        xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)

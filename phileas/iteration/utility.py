@@ -4,6 +4,7 @@ This module defines utility functions related to iteration.
 
 import dataclasses
 from enum import Enum
+from types import NoneType
 from typing import Iterable
 
 from .base import (
@@ -151,3 +152,48 @@ def flatten_datatree(
             flat_content[flat_key] = flat_value
 
     return flat_content
+
+
+def iteration_tree_to_xarray_parameters(
+    tree: IterationTree,
+) -> tuple[dict[str, list], list[str], list[int]]:
+    """
+    Generate the arguments required to build an `xr.DataArray` or
+    `xr.DataFrame`. You can then modify them, if needed, and build the `xarray`
+    used to store the results of your experiment.
+
+    >>> import numpy as np
+    >>> import xarray as xr
+    >>> coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+    >>> # Single data to be recorded for each iteration point
+    >>> xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)
+    >>> # Multiple data for each iteration point
+    >>> xr.Dataset(
+    >>>     data_vars=dict(
+    >>>             measurement_1=(dims_name, np.full(dims_shape, np.nan)),
+    >>>             measurement_2=(dims_name, np.full(dims_shape, np.nan)),
+    >>>     ),
+    >>>     coords=coords,
+    >>> )
+    """
+    flattened_tree = flatten_datatree(tree.to_pseudo_data_tree())
+    if isinstance(flattened_tree, dict):
+        coords: dict[str, list] = {}
+        dims_name: list[str] = []
+        dims_shape: list[int] = []
+        for name, value in flattened_tree.items():
+            if isinstance(value, IterationLeaf):
+                coords[name] = list(value)
+                dims_name.append(name)
+                dims_shape.append(len(value))
+            elif isinstance(value, (bool, int, float, NoneType)):
+                pass
+            else:
+                raise TypeError(f"Leaf with type {type(value)} detected.")
+
+        return coords, dims_name, dims_shape
+    elif isinstance(flattened_tree, IterationLeaf):
+        return {"dim_0": list(flattened_tree)}, ["dim_0"], [len(flattened_tree)]
+    else:
+        assert isinstance(flattened_tree, (NoneType, bool, str, int, float))
+        return {"dim_0": [flattened_tree]}, ["dim_0"], [1]
