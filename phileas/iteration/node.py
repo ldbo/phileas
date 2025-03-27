@@ -9,7 +9,6 @@ import collections.abc
 import dataclasses
 import math
 from abc import abstractmethod
-from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import chain
@@ -267,9 +266,6 @@ class IterationMethod(IterationTree):
         else:
             return default_dict
 
-    def __getitem__(self, Key) -> IterationTree:
-        return self.children[Key]
-
     # Path API
 
     # Note: self.children[child_key] is not properly typed. Indeed, child_key
@@ -283,7 +279,7 @@ class IterationMethod(IterationTree):
         if isinstance(child_key, _Child):
             raise KeyError("Iteration method does not support Child() index.")
 
-        return deepcopy(self.children[child_key])  # type: ignore[index]
+        return self.children[child_key]  # type: ignore[index]
 
     def _insert_child(
         self, child_key: Key | _Child, child: IterationTree
@@ -291,12 +287,12 @@ class IterationMethod(IterationTree):
         if isinstance(child_key, _Child):
             raise KeyError("Iteration method does not support Child() index.")
 
-        new_children = deepcopy(self.children)
+        new_children = self.children.copy()
         new_children[child_key] = child  # type: ignore[index]
         return dataclasses.replace(self, children=new_children)
 
     def _remove_child(self, child_key: Key | _Child) -> IterationTree:
-        new_children = deepcopy(self.children)
+        new_children = self.children.copy()
         _ = new_children.pop(child_key)  # type: ignore[arg-type]
         return dataclasses.replace(self, children=new_children)
 
@@ -306,7 +302,7 @@ class IterationMethod(IterationTree):
         if not issubclass(Node, IterationMethod):
             raise TypeError(f"Cannot replace an iteration method with a {Node}")
 
-        return Node(deepcopy(self.children), *args, **kwargs)
+        return Node(self.children.copy(), *args, **kwargs)
 
     def _depth_first_modify(
         self,
@@ -325,9 +321,7 @@ class IterationMethod(IterationTree):
                 for position, child in self.children.items()
             }
 
-        return modifier(
-            dataclasses.replace(self, children=deepcopy(new_children)), path
-        )
+        return modifier(dataclasses.replace(self, children=new_children), path)
 
 
 T = TypeVar("T", bound=IterationMethod, covariant=True)
@@ -696,9 +690,6 @@ class Transform(IterationTree):
 
         assert error is not None
         raise error
-
-    def __getitem__(self, key: Key) -> IterationTree:
-        return self.child[key]
 
     # Path API
 

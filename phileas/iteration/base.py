@@ -470,13 +470,12 @@ class IterationTree(ABC):
         """
         raise NotImplementedError()
 
-    @abstractmethod
     def __getitem__(self, key: Key) -> IterationTree:
         """
         It is implemented to allow working with an iteration tree as if it
         consisted of nested list and dict objects.
         """
-        raise NotImplementedError()
+        return self.get([key])
 
     # Path API
     #
@@ -519,6 +518,8 @@ class IterationTree(ABC):
         """
         Returns the root child with the given key, or raises a `KeyError` if
         there is no child with this key.
+
+        The output might be modified by the user.
         """
         raise NotImplementedError()
 
@@ -528,6 +529,9 @@ class IterationTree(ABC):
     ) -> IterationTree:
         """
         Insert a new child tree to the root and return the newly created tree.
+
+        The initial object should not be modified. It is preferable to work with
+        a copy.
         """
         raise NotImplementedError()
 
@@ -536,6 +540,9 @@ class IterationTree(ABC):
         """
         Remove a child of the root, and return the newly created tree. Raises a
         `KeyError` if there is no child with this key.
+
+        The initial object should not be modified. It is preferable to work with
+        a copy.
         """
         raise NotImplementedError()
 
@@ -546,8 +553,10 @@ class IterationTree(ABC):
         """
         Change the root node of a tree, keeping the remaining of the tree
         unmodified. In order to keep a valid tree structure, `Node` must have
-        be of the same type as the current root, otherwise a `TypeError` is
-        raised.
+        the same type as the current root, otherwise a `TypeError` is raised.
+
+        The initial object should not be modified. It is preferable to work with
+        a copy.
         """
         raise NotImplementedError()
 
@@ -656,6 +665,9 @@ class IterationTree(ABC):
         """
         Recursive implementation of `depth_first_modify`, implemented by the
         different node types.
+
+        In order to prevent side-effects, `modifier` should not return its input
+        objects. It should rather returns modified copies.
         """
         raise NotImplementedError()
 
