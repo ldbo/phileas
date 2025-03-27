@@ -4,7 +4,7 @@ actual data sources of an iteration tree, alongside their iterators.
 """
 
 from dataclasses import dataclass, field
-from math import exp, log
+from math import exp, inf, log
 from typing import Any, Callable, Generic, Iterator, TypeVar
 
 import numpy as np
@@ -169,7 +169,9 @@ class NumericRange(IterationLeaf, Generic[T]):
         raise TypeError("Cannot iterate over a numeric range.")
 
     def __len__(self) -> int:
-        raise TypeError("A numeric range does not have a length.")
+        msg = "A numeric range does not have a length. "
+        msg += "You can instead use a geometric, linear or integer range."
+        raise TypeError(msg)
 
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         return self
@@ -248,31 +250,60 @@ class GeometricRange(NumericRange[float]):
 
 
 @dataclass(frozen=True)
-class IntegerRange(NumericRange[int]):
+class IntegerRange(NumericRange[int | float]):
     """
     Generate integer values `step` spaced, between `start` and `end`, both
-    included.
+    included. `start` must be an `int`, but `end` can also be `math.inf` or
+    `-math.inf`. In these cases, the range is infinite.
     """
 
     step: int = field(default=1)
 
     def __post_init__(self):
-        if self.step < 0 or (self.start != self.end and self.step < 1):
+        if self.step < 0 or (self.start != self.end and self.step == 0):
             raise ValueError("Invalid step size")
 
-    def __iter__(self) -> TreeIterator:
-        sequence: list
-        if self.step == 0:
-            sequence = [self.start]
-        else:
-            direction = 1 if self.end > self.start else -1
-            positions = range(1 + abs(self.end - self.start) // self.step)
-            sequence = [self.start + direction * m * self.step for m in positions]
+        if not isinstance(self.start, int):
+            raise ValueError(f"start must be an int, {self.start} is not supported.")
 
-        return SequenceIterator(Sequence(sequence, default_value=self.default_value))
+        if not isinstance(self.end, int) and self.end not in {inf, -inf}:
+            raise ValueError(
+                "end must be an int or +/-math.inf, {self.end} is not supported"
+            )
+
+    def __iter__(self) -> TreeIterator:
+        return IntegerRangeIterator(self)
 
     def __len__(self) -> int:
+        if self.end in {inf, -inf}:
+            raise InfiniteLength
+
+        if self.end == self.start:
+            return 1
+
+        assert isinstance(self.start, int)
+        assert isinstance(self.end, int)
+        assert self.step >= 1
         return 1 + abs(self.end - self.start) // self.step
+
+
+class IntegerRangeIterator(TreeIterator[IntegerRange]):
+    length: int | float
+    direction: int
+
+    def __init__(self, tree: IntegerRange) -> None:
+        super().__init__(tree)
+        length: int | float | None = tree.safe_len()
+        if length is None:
+            length = inf
+        self.length = length
+        self.direction = 1 if tree.end > tree.start else -1
+
+    def _current_value(self) -> DataTree:
+        if self.position < 0 or self.position > self.length:
+            raise StopIteration
+
+        return self.tree.start + self.direction * self.position * self.tree.step
 
 
 ## Sequence

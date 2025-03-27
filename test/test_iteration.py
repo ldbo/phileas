@@ -1,6 +1,7 @@
 import dataclasses
 import datetime
 import itertools
+import math
 import unittest
 
 import hypothesis
@@ -8,6 +9,7 @@ import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
+import phileas
 from phileas import iteration
 from phileas.iteration import (
     Accumulator,
@@ -97,11 +99,12 @@ def geometric_range(draw):
 
 @st.composite
 def integer_range(draw):
-    start, end = draw(st.integers(-3, 3)), draw(st.integers(-3, 3))
+    start = draw(st.integers(-3, 3))
+    end = draw(st.one_of(st.just(math.inf), st.just(-math.inf), st.integers(-3, 3)))
     if start == end:
-        return IntegerRange(start, end, default_value=1)
+        return IntegerRange(start, end, step=0, default_value=1)
     else:
-        return IntegerRange(start, end, step=draw(st.integers(2, 3)), default_value=1)
+        return IntegerRange(start, end, step=draw(st.integers(1, 3)), default_value=1)
 
 
 @st.composite
@@ -476,28 +479,30 @@ class TestIteration(unittest.TestCase):
             CartesianProduct(
                 [
                     Sequence([1, 2]),
-                    NumpyRNG(),
+                    IntegerRange(start=0, end=math.inf),
                     Sequence([1, 2]),
-                    NumpyRNG(),
+                    IntegerRange(start=0, end=math.inf),
                     Sequence(["a", "b"]),
                     Sequence([True, False]),
                 ]
             )
         )
 
-        it = iter(tree)
-        iterated_values = list(itertools.islice(it, 10))
+        iterated_values = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_values = list(itertools.islice(tree, 10))
+
         expected_values = [
-            [1, 0.9952009928886075, 1, 0.019736141410354624, "a", True],
-            [1, 0.9952009928886075, 1, 0.019736141410354624, "a", False],
-            [1, 0.9952009928886075, 1, 0.019736141410354624, "b", True],
-            [1, 0.9952009928886075, 1, 0.019736141410354624, "b", False],
-            [1, 0.9952009928886075, 1, 0.5906680448959815, "a", True],
-            [1, 0.9952009928886075, 1, 0.5906680448959815, "a", False],
-            [1, 0.9952009928886075, 1, 0.5906680448959815, "b", True],
-            [1, 0.9952009928886075, 1, 0.5906680448959815, "b", False],
-            [1, 0.9952009928886075, 1, 0.6410922942699461, "a", True],
-            [1, 0.9952009928886075, 1, 0.6410922942699461, "a", False],
+            [1, 0, 1, 0, "a", True],
+            [1, 0, 1, 0, "a", False],
+            [1, 0, 1, 0, "b", True],
+            [1, 0, 1, 0, "b", False],
+            [1, 0, 1, 1, "a", True],
+            [1, 0, 1, 1, "a", False],
+            [1, 0, 1, 1, "b", True],
+            [1, 0, 1, 1, "b", False],
+            [1, 0, 1, 2, "a", True],
+            [1, 0, 1, 2, "a", False],
         ]
 
         self.assertEqual(iterated_values, expected_values)
@@ -614,22 +619,26 @@ class TestIteration(unittest.TestCase):
                 [
                     Sequence([1, 2]),
                     Sequence([1, 2]),
-                    NumpyRNG(),
+                    IntegerRange(start=0, end=math.inf),
                 ]
             )
         )
-        iterated_list = list(itertools.islice(tree, 10))
+
+        iterated_list = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_list = list(itertools.islice(tree, 10))
+
         expected_list = [
-            [1, 1, 0.9843125015123263],
-            [2, 1, 0.9843125015123263],
-            [1, 2, 0.9843125015123263],
-            [1, 1, 0.6388309087219696],
-            [1, 1, 0.8002627898349098],
-            [1, 1, 0.8852479432716168],
-            [1, 1, 0.935376769648871],
-            [1, 1, 0.0966725012126366],
-            [1, 1, 0.49756581031313474],
-            [1, 1, 0.09470303263823587],
+            [1, 1, 0],
+            [2, 1, 0],
+            [1, 2, 0],
+            [1, 1, 1],
+            [1, 1, 2],
+            [1, 1, 3],
+            [1, 1, 4],
+            [1, 1, 5],
+            [1, 1, 6],
+            [1, 1, 7],
         ]
 
         self.assertEqual(iterated_list, expected_list)
@@ -640,23 +649,27 @@ class TestIteration(unittest.TestCase):
                 [
                     Sequence([1, 2]),
                     Sequence([1, 2], default_value=3),
-                    NumpyRNG(),
+                    IntegerRange(start=0, end=math.inf),
                     Sequence([1, 2], default_value=3),
                 ]
             )
         )
-        iterated_list = list(itertools.islice(tree, 10))
+
+        iterated_list = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_list = list(itertools.islice(tree, 10))
+
         expected_list = [
-            [1, 3, 0.9843125015123263, 3],
-            [2, 3, 0.9843125015123263, 3],
-            [1, 1, 0.9843125015123263, 3],
-            [1, 2, 0.9843125015123263, 3],
-            [1, 3, 0.6388309087219696, 3],
-            [1, 3, 0.8002627898349098, 3],
-            [1, 3, 0.8852479432716168, 3],
-            [1, 3, 0.935376769648871, 3],
-            [1, 3, 0.0966725012126366, 3],
-            [1, 3, 0.49756581031313474, 3],
+            [1, 3, 0, 3],
+            [2, 3, 0, 3],
+            [1, 1, 0, 3],
+            [1, 2, 0, 3],
+            [1, 3, 1, 3],
+            [1, 3, 2, 3],
+            [1, 3, 3, 3],
+            [1, 3, 4, 3],
+            [1, 3, 5, 3],
+            [1, 3, 6, 3],
         ]
 
         self.assertEqual(iterated_list, expected_list)
@@ -741,5 +754,9 @@ class TestIteration(unittest.TestCase):
         import numpy as np
         import xarray as xr
 
-        coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
-        xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)
+        if tree.safe_len() is None:
+            with self.assertRaises(InfiniteLength):
+                iteration_tree_to_xarray_parameters(tree)
+        else:
+            coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+            xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)
