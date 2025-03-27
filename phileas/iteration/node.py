@@ -367,7 +367,7 @@ class IterationMethodIterator(TreeIterator[T]):
         else:  # isinstance(tree.children, dict)
             # An exception will be raised if comparison is not possible
             assert isinstance(tree.children, dict)
-            self.keys = sorted(tree.children.keys())
+            self.keys = sorted(tree.children.keys(), key=str)
 
         self.iterators = [iter(tree.children[key]) for key in self.keys]  # type: ignore[index]
         self.positions = [it.position for it in self.iterators]
