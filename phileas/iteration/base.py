@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import typing
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
@@ -220,6 +221,60 @@ class TreeIterator(ABC, Generic[T]):
                 raise StopIteration
 
         return self._current_value()
+
+
+class OneWayTreeIterator:
+    """
+    Iterator used in cases where random access iteration is too cumbersome to
+    implement. It only requires implementing the `_next` method.
+
+    Random access is obtained by using a cache. Thus, this method is usually
+    more time and memory expensive than classical random access iterators, so
+    it should only be used as a last resort. For now, the cache size is unbound,
+    as it stores all the iterated values. This might change in the future.
+
+    This is not a subclass of `TreeIterator` in order to prevent diamond
+    inheritance issues. Child classes must thus inherit from this, alongside
+    `TreeIterator`. It is recommended to place `OneWayTreeIterator` first, so
+    that its `_current_value` implementation is used.
+    """
+
+    # Attributes defined in `TreeIterator` and used here
+    position: int
+    size: int | None
+
+    #: Cache of the already generated values.
+    __cache: list[DataTree]
+
+    #: Last generated position.
+    __last_position: int
+
+    def __init__(self) -> None:
+        self.__cache = []
+        self.__last_position = -1
+
+    @abstractmethod
+    def _next(self) -> DataTree:
+        """Next iteration value."""
+        raise NotImplementedError()
+
+    def _current_value(self) -> DataTree:
+        if self.position >= len(self.__cache):
+            position = self.__last_position
+            while position < self.position:
+                try:
+                    value = self._next()
+                    self.__cache.append(value)
+                    position += 1
+                except StopIteration as e:
+                    tree_size = self.size if self.size is not None else "infinite"
+                    raise ValueError(
+                        f"Iterator exhausted at position {self.position}, "
+                        f"whereas the tree size is {tree_size}."
+                    ) from e
+
+        self.__last_position = self.position
+        return deepcopy(self.__cache[self.position])
 
 
 ### Indexing ###
