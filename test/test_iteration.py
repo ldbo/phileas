@@ -130,6 +130,12 @@ def random_leaf(draw):
     )
 
 
+@st.composite
+def generator_wrapper(draw):
+    size = draw(st.integers(1, 3))
+    return GeneratorWrapper(lambda: iter(range(size)), size=size)
+
+
 iteration_leaf = st.one_of(
     iteration_literal(),
     numeric_range(),
@@ -138,6 +144,7 @@ iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    generator_wrapper(),
 )
 
 iterable_iteration_leaf = st.one_of(
@@ -147,6 +154,7 @@ iterable_iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    generator_wrapper(),
 )
 
 ## Iteration nodes ##
@@ -1083,6 +1091,7 @@ class TestIteration(unittest.TestCase):
         import numpy as np
         import xarray as xr
 
+        hypothesis.note(f"The iteration tree is {tree}")
         if tree.safe_len() is None:
             with self.assertRaises(InfiniteLength):
                 iteration_tree_to_xarray_parameters(tree)
