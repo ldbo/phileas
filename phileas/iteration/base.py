@@ -6,6 +6,7 @@ iteration (data tree, pseudo data tree and iteration tree).
 from __future__ import annotations
 
 import dataclasses
+import math
 import typing
 from abc import ABC, abstractmethod
 from copy import deepcopy
@@ -161,7 +162,11 @@ class TreeIterator(ABC, Generic[T]):
 
     def update(self, position: int):
         """
-        Update the position of the iterator to any supported position.
+        Update the position of the iterator to any supported position. This
+        includes the positions ranging from `0` to `self.size - 1`, included, as
+        well as
+            - `-1`, which represents a reset forward iterator and
+            - `self.size`, which represents a reset backward iterator.
 
         If an invalid position is requested, an `IndexError` is raised, and the
         state of the iterator remains unchanged.
@@ -187,6 +192,10 @@ class TreeIterator(ABC, Generic[T]):
         """
         if isinstance(position, DefaultIndex):
             return self.tree.default(NoDefaultPolicy.FIRST_ELEMENT)
+
+        size = math.inf if self.size is None else self.size
+        if not 0 <= position < size:
+            raise IndexError(f"Invalid position {position}")
 
         self.update(position)
         return self._current_value()
