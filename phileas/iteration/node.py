@@ -14,13 +14,17 @@ from functools import reduce
 from itertools import chain
 from typing import Callable, Sequence, TypeVar
 
+import numpy as np
+
 from phileas.iteration import utility
+from phileas.iteration.random import RandomTree
 from phileas.logging import logger
 
 from .base import (
     ChildPath,
     DataTree,
     DefaultIndex,
+    InfiniteLength,
     IterationTree,
     Key,
     NoDefaultError,
@@ -449,7 +453,8 @@ class CartesianProduct(IterationMethod):
         children: collections.abc.Sized
         if isinstance(self.children, list):
             children = self.children
-        else:  # isinstance(self.chidren, dict)
+        else:
+            assert isinstance(self.children, dict)
             children = self.children.values()
 
         return reduce(int.__mul__, map(len, children), 1)
@@ -636,6 +641,61 @@ class UnionIterator(IterationMethodIterator[Union]):
                     positions[i] = DefaultIndex()
 
         return positions
+
+
+@dataclass(frozen=True)
+class Shuffle(RandomTree, IterationMethod):
+    """
+    Node which only has a single child, and shuffles its values. In other words,
+    it iterates over a random permutation of its children values.
+    """
+
+    child: IterationTree = field(init=False, repr=False, hash=False, compare=False)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if len(self.children) != 1:
+            raise ValueError("A Shuffle node only supports a single child.")
+
+        child: IterationTree
+        if isinstance(self.children, list):
+            child = self.children[0]
+        else:
+            child = list(self.children.values())[0]
+        object.__setattr__(self, "child", child)
+
+        try:
+            len(self.child)
+        except InfiniteLength as e:
+            raise ValueError("Shuffle node requires a finite child.") from e
+
+        if self.lazy:
+            logger.warning("Lazy iteration is not supported by the Shuffle node.")
+
+    def _iter(self) -> TreeIterator:
+        return ShuffleIterator(self)
+
+    def _len(self) -> int:
+        return len(self.child)
+
+
+class ShuffleIterator(IterationMethodIterator):
+    permutation: list[int]
+
+    def __init__(self, tree: Shuffle) -> None:
+        super().__init__(tree)
+
+        if tree.seed is None:
+            raise ValueError("Cannot iterate over a non-seeded Shuffle node.")
+
+        seed = list(tree.seed.to_bytes())
+        generator = np.random.Generator(np.random.PCG64(seed))
+        assert self.size is not None
+        self.permutation = list(generator.permutation(self.size))
+
+    def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
+        return [self.permutation[position]]
 
 
 ### Transform nodes ###
@@ -886,7 +946,7 @@ class MoveUpTransform(Transform):
 
     def transform(self, data_tree: DataTree) -> DataTree:
         if not isinstance(data_tree, dict) or len(data_tree) != 1:
-            raise ValueError("MopeUpTransform expects a dict with a single child.")
+            raise ValueError("MoveUpTransform expects a dict with a single child.")
 
         (key,) = list(data_tree.keys())
         (child,) = list(data_tree.values())

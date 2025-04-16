@@ -16,7 +16,8 @@ from .base import (
     IterationTree,
     PseudoDataTree,
 )
-from .leaf import RandomIterationLeaf, Seed, Sequence
+from .leaf import RandomIterationLeaf, Sequence
+from .random import Seed
 
 
 class RestrictionPolicy(Enum):

@@ -273,7 +273,8 @@ class OneWayTreeIterator:
                         f"whereas the tree size is {tree_size}."
                     ) from e
 
-        self.__last_position = self.position
+            self.__last_position = position
+
         return deepcopy(self.__cache[self.position])
 
 

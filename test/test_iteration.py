@@ -37,9 +37,10 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.base import ChildPath
+from phileas.iteration.node import Shuffle
+from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     flatten_datatree,
-    generate_seeds,
     iteration_tree_to_xarray_parameters,
 )
 
@@ -173,6 +174,18 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
     ]
     if isinstance(children, dict):
         node_types.append(Configurations)
+    if len(children) == 1:
+        try:
+            if children[0].safe_len() is not None:
+                node_types.append(Shuffle)
+        except BaseException:  # noqa: B036
+            pass  # Reached when children is a dict without the key 0
+
+        try:
+            if list(children.values())[0].safe_len() is not None:
+                node_types.append(Shuffle)
+        except BaseException:  # noqa: B036
+            pass  # Reached when children is a list
 
     Node = draw(st.sampled_from(node_types))
 
@@ -211,6 +224,8 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
             insert_name=insert_name,
             default_configuration=default_child,
         )
+    elif Node == Shuffle:
+        return Node(children)
     else:
         assert_never(Node)
 
@@ -252,14 +267,19 @@ iterable_iteration_tree_with_likely_config_root = st.recursive(
 )
 
 
-iterable_iteration_tree = iterable_iteration_tree_with_likely_config_root.filter(
-    lambda tree: not isinstance(tree, Configurations) or not tree.move_up
-)
+@st.composite
+def iterable_iteration_tree(draw):
+    tree = draw(
+        iterable_iteration_tree_with_likely_config_root.filter(
+            lambda tree: not isinstance(tree, Configurations) or not tree.move_up
+        )
+    )
+    return generate_seeds(tree)
 
 
 @st.composite
 def iterable_iteration_tree_and_index(draw):
-    tree = draw(iterable_iteration_tree)
+    tree = draw(iterable_iteration_tree())
     size = tree.safe_len()
     if size is None:
         size = INFINITE_TREE_ITERATED_SIZE
@@ -355,7 +375,7 @@ class TestIteration(unittest.TestCase):
         """
         del tree
 
-    @given(iterable_iteration_tree, st.integers(1, 3))
+    @given(iterable_iteration_tree(), st.integers(1, 3))
     def test_reverse_changes_forward(self, tree: IterationTree, reverses: int):
         iterator = iter(tree)
         for _ in range(reverses):
@@ -363,7 +383,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterator.is_forward(), reverses % 2 == 0)
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_len_consistent_with_iterate_finite(self, tree: IterationTree):
         try:
             n = len(tree)
@@ -373,7 +393,7 @@ class TestIteration(unittest.TestCase):
         except InfiniteLength:
             return
 
-    @given(iterable_iteration_tree, st.integers(min_value=0, max_value=1000))
+    @given(iterable_iteration_tree(), st.integers(min_value=0, max_value=1000))
     def test_infinite_tree_length_is_unbound(
         self, tree: IterationTree, tested_length: int
     ):
@@ -384,7 +404,7 @@ class TestIteration(unittest.TestCase):
         for _ in range(tested_length):
             next(it)
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_exhausted_iterator_is_exhausted(self, tree: IterationTree):
         if tree.safe_len() is None:
             return
@@ -393,7 +413,7 @@ class TestIteration(unittest.TestCase):
         _ = list(iterator)
         self.assertEqual(list(iterator), [])
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_reversible_iterator(self, tree: IterationTree):
         if tree.safe_len() is None:
             return
@@ -411,7 +431,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(forward, backward)
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_reverse_without_reset_is_empty(self, tree: IterationTree):
         iterator = iter(tree)
         iterator.reverse()
@@ -436,7 +456,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(previous, previous_after_reverse)
 
-    @given(iterable_iteration_tree, st.booleans())
+    @given(iterable_iteration_tree(), st.booleans())
     def test_same_iteration_after_reset(self, tree: IterationTree, reverse: bool):
         if reverse and tree.safe_len() is None:
             return
@@ -755,6 +775,17 @@ class TestIteration(unittest.TestCase):
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    @given(st.integers(1, 10))
+    def test_shuffle_yields_a_permutation(self, size: int):
+        child = IntegerRange(start=0, end=size - 1)
+        values = set(child)
+        shuffle = generate_seeds(Shuffle([child]))
+        shuffled_values = [v[0] for v in shuffle]  # type: ignore[index]
+        hypothesis.note(f"Shuffled values: {shuffled_values}")
+
+        self.assertEqual(len(values), len(shuffled_values))
+        self.assertEqual(values, set(shuffled_values))
 
     @given(iteration_tree())
     def test_requested_configuration_is_not_configurable(self, tree: IterationTree):
@@ -1084,7 +1115,7 @@ class TestIteration(unittest.TestCase):
         flattened_tree = flatten_datatree(tree)
         self.assertEqual(expected_flat_tree, flattened_tree)
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_iteration_tree_to_xarray_parameters_raises_no_error(
         self, tree: IterationTree
     ):

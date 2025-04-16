@@ -42,7 +42,6 @@ __all__ = [
     "RandomIterationLeaf",
     "Seed",
     "Sequence",
-    "generate_seeds",
     "Accumulator",
     "CartesianProduct",
     "FunctionalTranform",
@@ -81,7 +80,6 @@ from .leaf import (
     NumericRange,
     NumpyRNG,
     RandomIterationLeaf,
-    Seed,
     Sequence,
 )
 from .node import (
@@ -94,4 +92,5 @@ from .node import (
     Transform,
     Union,
 )
-from .utility import generate_seeds, restrict_leaves_sizes
+from .random import Seed, generate_seeds
+from .utility import restrict_leaves_sizes
