@@ -776,8 +776,8 @@ class TestIteration(unittest.TestCase):
     def test_shuffle_yields_a_permutation(self, size: int):
         child = IntegerRange(start=0, end=size - 1)
         values = set(child)
-        shuffle = generate_seeds(Shuffle([child]))
-        shuffled_values = [v[0] for v in shuffle]  # type: ignore[index]
+        shuffle = generate_seeds(Shuffle(child))
+        shuffled_values = list(shuffle)
         hypothesis.note(f"Shuffled values: {shuffled_values}")
 
         self.assertEqual(len(values), len(shuffled_values))

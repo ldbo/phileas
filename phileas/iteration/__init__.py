@@ -41,6 +41,7 @@ __all__ = [
     "NumpyRNG",
     "RandomIterationLeaf",
     "Seed",
+    "Shuffle",
     "Sequence",
     "Accumulator",
     "CartesianProduct",
@@ -89,6 +90,7 @@ from .node import (
     FunctionalTranform,
     IterationMethod,
     Lazify,
+    Shuffle,
     Transform,
     Union,
 )
