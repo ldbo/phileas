@@ -29,6 +29,7 @@ from .base import (
     Key,
     NoDefaultError,
     NoDefaultPolicy,
+    OneWayTreeIterator,
     PseudoDataTree,
     TreeIterator,
     _Child,
@@ -696,6 +697,108 @@ class ShuffleIterator(IterationMethodIterator):
 
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
         return [self.permutation[position]]
+
+
+@dataclass(frozen=True)
+class Pick(RandomTree, IterationMethod):
+    """
+    Randomly pick and return one child at a time. For finite trees, it behaves
+    in a way similar to composing `Shuffle` and `Union(reset=False)` nodes. It
+    can additionally handle infinite children, whereas `Shuffle` cannot.
+    """
+
+    #: Key of the child to use as a default value.
+    default_child: Key | _NoDefault = field(default_factory=_NoDefault)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if isinstance(self.children, list):
+            if self.default_child != _NoDefault() and not isinstance(
+                self.default_child, int
+            ):
+                raise TypeError(
+                    "The default_child field of a Pick node with list children "
+                    "must be NoDefault or an int."
+                )
+        else:
+            if (
+                self.default_child != _NoDefault()
+                and self.default_child not in self.children
+            ):
+                raise KeyError(
+                    "The default_child field of a Pick node with dict children "
+                    "must be a valid children key."
+                )
+
+    def _iter(self) -> TreeIterator:
+        return PickIterator(self)
+
+    def _len(self) -> int:
+        children: collections.abc.Sized
+        if isinstance(self.children, list):
+            children = self.children
+        else:
+            assert isinstance(self.children, dict)
+            children = self.children.values()
+
+        return sum(len(child) for child in children)
+
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
+        if not isinstance(self.default_child, _NoDefault):
+            default_child = self.children[self.default_child]  # type: ignore[index]
+            default_value = default_child.default(no_default_policy)
+            if isinstance(self.children, list):
+                return [default_value]
+            else:
+                return {self.default_child: default_value}
+
+        raise NoDefaultError("Pick node misses a default_child field.", [])
+
+
+class PickIterator(OneWayTreeIterator, IterationMethodIterator):
+    generator: np.random.Generator
+    next_positions: list[int]
+    child_factory: Callable[[Key, DataTree], DataTree]
+
+    def __init__(self, tree: Pick) -> None:
+        OneWayTreeIterator.__init__(self)
+        IterationMethodIterator.__init__(self, tree)
+
+        if tree.seed is None:
+            raise ValueError("Cannot iterate over a non-seeded Pick node.")
+
+        seed = list(tree.seed.to_bytes())
+        self.generator = np.random.Generator(np.random.PCG64(seed))
+        self.next_positions = [0] * len(self.iterators)
+
+        if isinstance(tree.children, dict):
+
+            def child_factory(index: Key, child: DataTree) -> DataTree:
+                return {index: child}
+
+            self.child_factory = child_factory
+        else:
+
+            def child_factory(index: Key, child: DataTree) -> DataTree:
+                return [child]
+
+            self.child_factory = child_factory
+
+    def _next(self) -> DataTree:
+        while True:
+            picked_child = self.generator.integers(len(self.iterators))
+            picked_position = self.next_positions[picked_child]
+
+            try:
+                value = self.iterators[picked_child][picked_position]
+                self.next_positions[picked_child] += 1
+                return self.child_factory(self.keys[picked_child], value)
+            except IndexError:
+                pass
+
+    def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
+        raise NotImplementedError("_children_positions is not required by PickIterator")
 
 
 ### Transform nodes ###

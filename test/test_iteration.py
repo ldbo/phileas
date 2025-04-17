@@ -3,7 +3,6 @@ import datetime
 import itertools
 import math
 import unittest
-from typing import assert_never
 
 import hypothesis
 import numpy as np
@@ -37,7 +36,7 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.base import ChildPath
-from phileas.iteration.node import Shuffle
+from phileas.iteration.node import Pick, Shuffle
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     flatten_datatree,
@@ -171,6 +170,7 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
     node_types: list[type[IterationMethod]] = [
         CartesianProduct,
         Union,
+        Pick,
     ]
     if isinstance(children, dict):
         node_types.append(Configurations)
@@ -189,9 +189,7 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
 
     Node = draw(st.sampled_from(node_types))
 
-    if Node == CartesianProduct:
-        return Node(children, lazy=False)
-    elif Node == Union:
+    if Node == Union:
         reset = True
         if isinstance(children, dict):
             reset = draw(st.booleans())
@@ -224,10 +222,8 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
             insert_name=insert_name,
             default_configuration=default_child,
         )
-    elif Node == Shuffle:
-        return Node(children)
     else:
-        assert_never(Node)
+        return Node(children)
 
 
 class IdTransform(Transform):
