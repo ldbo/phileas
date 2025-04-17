@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from phileas import iteration
+from phileas.iteration.node import CartesianProduct
 from phileas.parsing import load_iteration_tree_from_yaml_file
 
 
@@ -108,6 +109,25 @@ c: !configurations
             },
         )
 
+        self.assertEqual(tree, expected_tree)
+
+    def test_shuffle(self):
+        content = """
+b: !shuffle
+    child: !range
+        start: 0
+        end: 10
+        resolution: 1
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = CartesianProduct(
+            children={
+                "b": iteration.Shuffle(
+                    child=iteration.IntegerRange(start=0, end=10, step=1),
+                    seed=None,
+                )
+            },
+        )
         self.assertEqual(tree, expected_tree)
 
     def test_literal_tree(self):

@@ -113,6 +113,37 @@ class Configurations(YamlCustomType):
         )
 
 
+@_iteration_tree_parser.register_class
+@dataclass
+class Shuffle(YamlCustomType):
+    """
+    Shuffle node, whose iteration returns a permutation of its only child. It
+    has a single `child` field.
+    """
+
+    yaml_tag: ClassVar[str] = "!shuffle"
+    child: Any
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Shuffle:
+        mapping = constructor.construct_mapping(node, deep=True)
+        try:
+            child = mapping.pop("child")
+        except KeyError as e:
+            raise ValueError("!shuffle requires a child field") from e
+        return Shuffle(child)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: Shuffle):
+        if isinstance(node.child, dict):
+            return representer.represent_mapping(cls.yaml_tag, node.child)
+        else:
+            return representer.represent_sequence(cls.yaml_tag, node.child)
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Shuffle(raw_yaml_structure_to_iteration_tree(self.child))
+
+
 #: Numeric type of the Range
 RT = TypeVar("RT", bound=int | float)
 
