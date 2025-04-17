@@ -3,6 +3,7 @@ import datetime
 import itertools
 import math
 import unittest
+from typing import assert_never
 
 import hypothesis
 import numpy as np
@@ -36,7 +37,7 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.base import ChildPath
-from phileas.iteration.node import Pick, Shuffle
+from phileas.iteration.node import Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     flatten_datatree,
@@ -162,11 +163,32 @@ iterable_iteration_leaf = st.one_of(
 
 @st.composite
 def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
-    children = draw(
-        st.lists(children_st, min_size=1, max_size=4)
-        | st.dictionaries(data_literal, children_st, min_size=1, max_size=4)
-    )
+    if draw(st.booleans()):
+        child = draw(children_st)
+        return unary_tree_node(draw, child)
+    else:
+        children = draw(
+            st.lists(children_st, min_size=1, max_size=4)
+            | st.dictionaries(data_literal, children_st, min_size=1, max_size=4)
+        )
+        return iteration_method_node(draw, children)
 
+
+def unary_tree_node(draw, child: IterationTree) -> IterationTree:
+    types: list[type[UnaryNode]] = [IdTransform]
+    try:
+        if child.safe_len() is not None:
+            types.append(Shuffle)
+    except TypeError:  # Occurs for NumericRange
+        pass
+
+    Node = draw(st.sampled_from(types))
+    return Node(child)
+
+
+def iteration_method_node(
+    draw, children: dict[Key, IterationTree] | list[IterationTree]
+) -> IterationTree:
     node_types: list[type[IterationMethod]] = [
         CartesianProduct,
         Union,
@@ -174,21 +196,11 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
     ]
     if isinstance(children, dict):
         node_types.append(Configurations)
-    if len(children) == 1:
-        try:
-            if children[0].safe_len() is not None:
-                node_types.append(Shuffle)
-        except BaseException:  # noqa: B036
-            pass  # Reached when children is a dict without the key 0
-
-        try:
-            if list(children.values())[0].safe_len() is not None:
-                node_types.append(Shuffle)
-        except BaseException:  # noqa: B036
-            pass  # Reached when children is a list
 
     Node = draw(st.sampled_from(node_types))
 
+    if Node == CartesianProduct or Node == Pick:
+        return Node(children)
     if Node == Union:
         reset = True
         if isinstance(children, dict):
@@ -223,7 +235,7 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
             default_configuration=default_child,
         )
     else:
-        return Node(children)
+        assert_never(Node)
 
 
 class IdTransform(Transform):
