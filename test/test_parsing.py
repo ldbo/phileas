@@ -130,6 +130,24 @@ b: !shuffle
         )
         self.assertEqual(tree, expected_tree)
 
+    def test_pick(self):
+        content = """
+!pick
+    a: !range
+        start: 1
+        end: 5
+        resolution: 1
+    b: !sequence [1, 2, 3, 4]
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = iteration.Pick(
+            children={
+                "a": iteration.IntegerRange(start=1, end=5, step=1),
+                "b": iteration.Sequence(elements=[1, 2, 3, 4]),
+            },
+        )
+        self.assertEqual(tree, expected_tree)
+
     def test_literal_tree(self):
         content = """12"""
         self.assertEqual(

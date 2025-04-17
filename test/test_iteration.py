@@ -784,6 +784,28 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
+    def test_pick(self):
+        tree = Pick(
+            children={
+                "1": IntegerRange(start=1, end=5, step=1),
+                "2": Sequence(elements=["a", "b", "c", "d"]),
+            },
+            seed=Seed(path=[], salt="test"),
+        )
+        expected_list = [
+            {"1": 1},
+            {"2": "a"},
+            {"2": "b"},
+            {"1": 2},
+            {"2": "c"},
+            {"1": 3},
+            {"1": 4},
+            {"1": 5},
+            {"2": "d"},
+        ]
+        iterated_list = list(tree)
+        self.assertEqual(expected_list, iterated_list)
+
     @given(st.integers(1, 10))
     def test_shuffle_yields_a_permutation(self, size: int):
         child = IntegerRange(start=0, end=size - 1)

@@ -144,6 +144,42 @@ class Shuffle(YamlCustomType):
         return iteration.Shuffle(raw_yaml_structure_to_iteration_tree(self.child))
 
 
+@_iteration_tree_parser.register_class
+@dataclass
+class Pick(YamlCustomType):
+    """
+    Pick node, whose iteration alternatively returns a single of its children.
+    It contains a named mapping, with a `_default_child` field, containing
+    the key of its default child.
+    """
+
+    yaml_tag: ClassVar[str] = "!pick"
+    children: dict[Key, Any]
+    default_child: Key
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Pick:
+        mapping = constructor.construct_mapping(node, deep=True)
+        default_child = mapping.pop("_default_child", None)
+
+        return Pick(children=mapping, default_child=default_child)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: Pick):
+        return representer.represent_mapping(
+            cls.yaml_tag, node.children | {"_default_child": node.default_child}
+        )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Pick(
+            {
+                name: raw_yaml_structure_to_iteration_tree(config)
+                for name, config in self.children.items()
+            },
+            default_child=self.default_child,
+        )
+
+
 #: Numeric type of the Range
 RT = TypeVar("RT", bound=int | float)
 

@@ -653,22 +653,22 @@ class Pick(RandomTree, IterationMethod):
     """
 
     #: Key of the child to use as a default value.
-    default_child: Key | _NoDefault = field(default_factory=_NoDefault)
+    default_child: Key | None = None
 
     def __post_init__(self):
         super().__post_init__()
 
         if isinstance(self.children, list):
-            if self.default_child != _NoDefault() and not isinstance(
+            if self.default_child is not None and not isinstance(
                 self.default_child, int
             ):
                 raise TypeError(
                     "The default_child field of a Pick node with list children "
-                    "must be NoDefault or an int."
+                    "must be None or an int."
                 )
         else:
             if (
-                self.default_child != _NoDefault()
+                self.default_child is not None
                 and self.default_child not in self.children
             ):
                 raise KeyError(
@@ -690,7 +690,7 @@ class Pick(RandomTree, IterationMethod):
         return sum(len(child) for child in children)
 
     def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
-        if not isinstance(self.default_child, _NoDefault):
+        if self.default_child is not None:
             default_child = self.children[self.default_child]  # type: ignore[index]
             default_value = default_child.default(no_default_policy)
             if isinstance(self.children, list):
