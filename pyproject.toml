@@ -50,3 +50,6 @@ exclude_also = [
     "pragma: no cover",
     "raise NotImplementedError()",
 ]
+include = [
+    "./phileas/**"
+]
