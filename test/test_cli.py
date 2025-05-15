@@ -85,7 +85,7 @@ class TestCli(unittest.TestCase):
                 dont_write=False,
                 bench=bench,
                 experiment=experiment,
-                experiment_config=experiment_config,
+                experiment_config_path=experiment_config,
                 **kwargs,
             ),
             0,

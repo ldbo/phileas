@@ -97,20 +97,24 @@ def generate_template(
 def generate_script(
     bench: pathlib.Path | None,
     experiment: pathlib.Path | None,
-    experiment_config: str | None,
+    experiment_config_path: str | None,
     **kwargs
 ) -> int:
-    template_data = {}
-    if bench is not None and experiment is not None and experiment_config is not None:
+    template_data: dict[str, typing.Any] = {}
+    if (
+        bench is not None
+        and experiment is not None
+        and experiment_config_path is not None
+    ):
         try:
-            importlib.import_module(experiment_config)
+            importlib.import_module(experiment_config_path)
         except ImportError:
             import experiment_config  # type: ignore[import-not-found]
 
         factory = phileas.ExperimentFactory(bench, experiment)
         instruments_and_type = []
         dependencies = set()
-        for instrument in factory._ExperimentFactory__experiment_instruments.values():
+        for instrument in factory._ExperimentFactory__experiment_instruments.values():  # type: ignore[attr-defined]
             name = instrument.name
             hints = typing.get_type_hints(
                 instrument.bench_instrument.loader.initiate_connection
@@ -128,9 +132,9 @@ def generate_script(
         template_data["instruments_and_type"] = instruments_and_type
         template_data["bench"] = bench
         template_data["experiment"] = experiment
-        template_data["experiment_config"] = experiment_config
-        template_data["dependencies"] = dependencies - {experiment_config}
-    elif bench is None and experiment is None and experiment_config is None:
+        template_data["experiment_config"] = experiment_config_path
+        template_data["dependencies"] = dependencies - {experiment_config_path}
+    elif bench is None and experiment is None and experiment_config_path is None:
         pass
     else:
         print(
