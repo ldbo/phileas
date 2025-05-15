@@ -58,9 +58,9 @@ class Template(enum.Enum):
 
     def to_template_file(self) -> str:
         return {
-            "bench": "bench.yaml",
-            "experiment": "experiment.yaml",
-            "script": "script.py",
+            "bench": "bench.yaml.template",
+            "experiment": "experiment.yaml.template",
+            "script": "script.py.template",
         }[self.value]
 
 
