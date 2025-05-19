@@ -187,7 +187,7 @@ def flatten_datatree(
 
 def iteration_tree_to_xarray_parameters(
     tree: IterationTree,
-) -> tuple[dict[str, list], list[str], list[int]]:
+) -> tuple[dict[str, list | DataLiteral], list[str], list[int]]:
     """
     Generate the arguments required to build an `xr.DataArray` or
     `xr.DataFrame`. You can then modify them, if needed, and build the `xarray`
@@ -209,7 +209,7 @@ def iteration_tree_to_xarray_parameters(
     """
     flattened_tree = flatten_datatree(tree.to_pseudo_data_tree())
     if isinstance(flattened_tree, dict):
-        coords: dict[str, list] = {}
+        coords: dict[str, list | DataLiteral] = {}
         dims_name: list[str] = []
         dims_shape: list[int] = []
         for name, value in flattened_tree.items():
@@ -217,8 +217,8 @@ def iteration_tree_to_xarray_parameters(
                 coords[name] = list(value)
                 dims_name.append(name)
                 dims_shape.append(len(value))
-            elif isinstance(value, (bool, int, float, NoneType)):
-                pass
+            elif isinstance(value, (bool, int, float, str, NoneType)):
+                coords[name] = value
             else:
                 raise TypeError(f"Leaf with type {type(value)} detected.")
 
