@@ -188,10 +188,20 @@ def register_default_loader(
             Callable[[Any, dict], None],
         ]
     ),
+) -> (
+    type[Loader]
+    | tuple[
+        str,
+        set[str],
+        Callable[[dict], Any],
+        Callable[[Any, dict], None],
+    ]
 ):
     """
     Register a loader to be added on init by every new `ExperimentFactory`. See
     `_add_loader` for the specifications of the arguments.
+
+    This function can either be used directly, or as a class decorator.
     """
     if inspect.isclass(loader):
         name = loader.name
@@ -208,6 +218,8 @@ def register_default_loader(
 
     logger.debug(f"Register default loader {name} for interfaces {interfaces}")
     _add_loader(_DEFAULT_LOADERS, loader)
+
+    return loader
 
 
 def clear_default_loaders():
