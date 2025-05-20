@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from logging import Logger
 import operator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -41,12 +42,17 @@ class Loader(ABC):
     #: instantiated instruments.
     instruments_factory: ExperimentFactory
 
-    def __init__(self, instruments_factory: ExperimentFactory):
+    #: Logging handler that should be used for logging loader-specific
+    #: information.
+    logger: Logger
+
+    def __init__(self, name: str, instruments_factory: ExperimentFactory):
         """
         When subclassing `Loader`, the signature of the constructor should not
         be modified, and this constructor should be called.
         """
         self.instruments_factory = instruments_factory
+        self.logger = logger.getChild(name)
 
     @abstractmethod
     def initiate_connection(self, configuration: dict) -> Any:
@@ -230,7 +236,7 @@ class BenchInstrument:
     instrument: Any | None = None
 
     def initiate_connection(self):
-        logger.info(f"Initiating connection to {self.name}.")
+        self.loader.logger.info(f"Initiating connection.")
         self.instrument = self.loader.initiate_connection(self.configuration)
 
 
@@ -452,11 +458,11 @@ class ExperimentFactory:
             if not isinstance(loader_value, str):
                 raise TypeError("Loader field must be a string.")
 
-            ChoosenLoader = self.loaders[loader_value]
-            instrument = BenchInstrument(name, ChoosenLoader(self), config, None)
+            ChosenLoader = self.loaders[loader_value]
+            instrument = BenchInstrument(name, ChosenLoader(name, self), config, None)
             self.__bench_instruments[name] = instrument
 
-            msg = f"Bench instrument {name} assigned to loader {ChoosenLoader}."
+            msg = f"Bench instrument {name} assigned to loader {ChosenLoader}."
             logger.info(msg)
 
     def __preconfigure_experiment_instruments(self, p_experiment_config: dict | None):
@@ -556,9 +562,9 @@ class ExperimentFactory:
         Extract the connection graph from the experiment configuration, removing
         `connections` entries from it.
         """
-        connections: list[tuple[str, list[str], str, list[str], str]] = (
-            self.__parse_global_connections(p_experiment_config)
-        )
+        connections: list[
+            tuple[str, list[str], str, list[str], str]
+        ] = self.__parse_global_connections(p_experiment_config)
 
         if isinstance(p_experiment_config, dict):
             for name, config in p_experiment_config.items():
