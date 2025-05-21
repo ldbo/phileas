@@ -9,6 +9,7 @@ import hypothesis
 import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
+from typing_extensions import assert_never
 
 import phileas
 from phileas import iteration
