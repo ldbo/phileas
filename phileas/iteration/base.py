@@ -194,8 +194,17 @@ class TreeIterator(ABC, Generic[T]):
             return self.tree.default(NoDefaultPolicy.FIRST_ELEMENT)
 
         size = math.inf if self.size is None else self.size
-        if not 0 <= position < size:
-            raise IndexError(f"Invalid position {position}")
+        if position < 0:
+            if size < math.inf:
+                assert isinstance(size, int)
+                position = size + position
+            else:
+                raise IndexError(
+                    f"Negative index {position} is not supported with infinite "
+                    + "tree."
+                )
+        elif position >= size:
+            raise IndexError(f"Index {position} larger than the tree size.")
 
         self.update(position)
         return self._current_value()
