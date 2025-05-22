@@ -5,7 +5,7 @@ This module defines utility functions related to iteration.
 import dataclasses
 from enum import Enum
 from types import NoneType
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from .base import (
     ChildPath,
@@ -18,6 +18,9 @@ from .base import (
 )
 from .leaf import RandomIterationLeaf, Sequence
 from .random import Seed
+
+if TYPE_CHECKING:
+    import pandas
 
 
 class RestrictionPolicy(Enum):
@@ -228,3 +231,38 @@ def iteration_tree_to_xarray_parameters(
     else:
         assert isinstance(flattened_tree, (NoneType, bool, str, int, float))
         return {"dim_0": [flattened_tree]}, ["dim_0"], [1]
+
+
+def iteration_tree_to_multiindex(tree: IterationTree) -> "pandas.MultiIndex":
+    """
+    Create a {py:class}`pandas.MultiIndex` that holds the values stored in an
+    iteration tree. This method iterates over the whole tree in order to create
+    the index. Thus, it requires the iterated trees to have all the same shape.
+    """
+    import pandas as pd
+
+    flattened_tree = flatten_datatree(tree.to_pseudo_data_tree())
+    index: pd.MultiIndex
+    if isinstance(flattened_tree, dict):
+        names = sorted(flattened_tree.keys())
+        tuples = []
+        for datatree in tree:
+            fd = flatten_datatree(datatree)
+
+            error_message = "Iteration tree that change shape are not supported."
+            if not isinstance(fd, dict):
+                raise ValueError(error_message)
+
+            try:
+                tuples.append(tuple(fd[key] for key in names))
+            except KeyError as e:
+                raise ValueError(error_message) from e
+
+        index = pd.MultiIndex.from_tuples(tuples, names=names)
+    elif isinstance(flattened_tree, IterationLeaf):
+        index = pd.MultiIndex.from_arrays([(dt,) for dt in flattened_tree])
+    else:
+        assert isinstance(flattened_tree, (NoneType, bool, str, int, float))
+        index = pd.MultiIndex.from_arrays([(flattened_tree,)])
+
+    return index.sortlevel()[0]
