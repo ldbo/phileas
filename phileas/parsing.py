@@ -115,6 +115,60 @@ class Configurations(YamlCustomType):
 
 @_iteration_tree_parser.register_class
 @dataclass
+class CartesianProduct(YamlCustomType):
+    """
+    Cartesian product node, see
+    {py:class}`~phileas.iteration.CartesianProduct` for the supported
+    arguments.
+    """
+
+    yaml_tag: ClassVar[str] = "!product"
+    children: dict[Key, Any] | list
+    order: list[Key] | None
+    lazy: bool
+    snake: bool
+
+    @classmethod
+    def from_yaml(
+        cls, constructor: yaml.Constructor, node: yaml.Node
+    ) -> CartesianProduct:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            order = mapping.pop("_order", None)
+            lazy = mapping.pop("_lazy", False)
+            snake = mapping.pop("_snake", False)
+            return CartesianProduct(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                snake=snake,
+            )
+        else:
+            children = constructor.construct_sequence(node, deep=True)
+            return CartesianProduct(children, order=None, lazy=False, snake=False)
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
+        if isinstance(self.children, list):
+            children = [
+                raw_yaml_structure_to_iteration_tree(child) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            children = {
+                name: raw_yaml_structure_to_iteration_tree(child)
+                for name, child in self.children.items()
+            }
+        return iteration.CartesianProduct(
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            snake=self.snake,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
 class Union(YamlCustomType):
     """
     Union node, see {py:class}`~phileas.iteration.Union` for the supported

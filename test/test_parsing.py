@@ -71,6 +71,27 @@ default: 12
             iteration.Sequence([1, 2, 3]),
         )
 
+    def test_product(self):
+        content = """
+!product
+    _order: [b, a]
+    _snake: true
+    a: !sequence [1, 2, 3]
+    b: !sequence [a, b, c]
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = iteration.CartesianProduct(
+            children={
+                "a": iteration.Sequence(elements=[1, 2, 3]),
+                "b": iteration.Sequence(elements=["a", "b", "c"]),
+            },
+            order=["b", "a"],
+            lazy=False,
+            snake=True,
+        )
+
+        self.assertEqual(tree, expected_tree)
+
     def test_union(self):
         content = """
 !union
