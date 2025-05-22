@@ -1,0 +1,64 @@
+# Configuration file for the Sphinx documentation builder.
+#
+# For the full list of built-in configuration values, see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+import datetime
+
+import phileas
+
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+
+project = "phileas"
+copyright = f"{datetime.datetime.now().year}, Louis Dubois"
+author = "Louis Dubois"
+release = phileas.__version__
+
+# -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
+extensions = [
+    "myst_nb",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.coverage",
+    "sphinx.ext.duration",
+    "sphinx.ext.doctest",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx_copybutton",
+    "sphinx_design",
+]
+templates_path = ["_templates"]
+
+## MyST-NB
+myst_enable_extensions = ["colon_fence", "smartquotes", "replacements", "dollarmath"]
+nb_number_source_lines = True
+nb_merge_streams = True
+myst_heading_anchors = 6
+
+## Autodoc
+autodoc_type_aliases = {
+    "DataTree": "phileas.iteration.DataTree",
+    "DataLiteral": "phileas.iteration.DataLiteral",
+    "PseudoDataTree": "phileas.iteration.PseudoDataTree",
+    "PseudoDataLiteral": "phileas.iteration.PseudoDataLiteral",
+    "Key": "phileas.iteration.Key",
+}
+autodoc_member_order = "bysource"
+
+## Coverage
+coverage_modules = ["phileas"]
+coverage_statistics_to_stdout = True
+
+## Intersphinx
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+
+## Napoleon
+napoleon_google_docstring = True
+
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+html_theme = "pydata_sphinx_theme"

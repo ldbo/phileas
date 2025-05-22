@@ -1,8 +1,20 @@
+# Python
 /dist/
-*.pdf
 __pycache__
-poetry.lock
+
+# Jupyter
+**/.ipynb_checkpoints/
+
+# CI
 .hypothesis
 /.coverage
 /htmlcov
 /.tox
+
+# Documentation
+/doc/build/
+/doc/coverage/
+/doc/jupyter_execute/
+
+# Output files
+*.pdf
