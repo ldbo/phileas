@@ -15,6 +15,7 @@ kernelspec:
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
+
 import logging
 import sys
 

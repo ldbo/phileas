@@ -37,6 +37,19 @@ Overview of phileas features
 
 Installation instructions
 :::::
+
+:::::{grid-item-card} {octicon}`tasklist` User guide
+:text-align: center
+
+
+:::{button-ref} user_guide/index
+:click-parent:
+:outline:
+:color: primary
+:expand:
+
+Dive deeper into the different features
+:::::
 ::::::::::::
 
 :::{toctree}
@@ -44,4 +57,6 @@ Installation instructions
 :hidden:
 
 getting_started/index
+examples/index
+user_guide/index
 :::
