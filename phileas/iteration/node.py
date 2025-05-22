@@ -12,7 +12,7 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import chain
-from typing import Callable, Sequence, TypeVar
+from typing import Callable, Literal, Sequence, TypeVar
 
 import numpy as np
 
@@ -535,16 +535,49 @@ class Union(IterationMethod):
      - their first value otherwise.
     """
 
-    #: If set, reset the children to their default value once they are not
-    #: iterated over. Otherwise, only the currently iterated child is returned.
-    #: Not that it implies `lazy`, and is not applicable to `list` children.
-    reset: bool = True
+    #: Defines which value to use before starting the iteration over a child.
+    #: "first" uses the child's first value and "default" its default value.
+    #: `None` does not set the children values before iteration. Thus, it is
+    #:  only applicable to dict children.
+    preset: Literal["first"] | Literal["default"] | None = "first"
+
+    #: You can only set it when `preset == "first"`. Then, children are all set
+    #: to their first value at the first iteration. When iterating over them,
+    #: they start directly at their second value.
+    common_preset: bool = False
+
+    #: Defines which value to use after ending the iteration over a
+    #: child. "first" resets it to its starting value, "last" leaves it
+    #: unchanged, and "default" resets it to its default value. `None` does not
+    #: reset the child after iteration. Thus, it is only applicable to dict
+    #: children.
+    reset: Literal["first"] | Literal["last"] | Literal["default"] | None = "first"
 
     def __post_init__(self):
         super().__post_init__()
 
-        if not self.reset and isinstance(self.children, list):
-            raise ValueError("Union with reset = False must have dict children.")
+        if self.preset is None and not isinstance(self.children, dict):
+            raise ValueError("Union with preset = None requires dict children.")
+
+        if self.common_preset and self.preset != "first":
+            raise ValueError("Union with common_preset requires preset = 'first'.")
+
+        if self.reset is None and not isinstance(self.children, dict):
+            raise ValueError("Union with reset = None requires dict children.")
+
+        if self.preset == "default" or self.reset == "default":
+            children: list[IterationTree]
+            if isinstance(self.children, list):
+                children = self.children
+            else:
+                assert isinstance(self.children, dict)
+                children = list(self.children.values())
+
+            if any(_has_no_default(child) for child in children):
+                raise ValueError(
+                    "Union with preset = 'default' or reset = 'default' "
+                    + "requires its children to have default values."
+                )
 
     def _iter(self) -> TreeIterator:
         return UnionIterator(self)
@@ -553,93 +586,94 @@ class Union(IterationMethod):
         children: list[IterationTree]
         if isinstance(self.children, list):
             children = self.children
-        else:  # isinstance(self.children, dict)
+        else:
+            assert isinstance(self.children, dict)
             children = list(self.children.values())
 
-        no_default = [_has_no_default(child) for child in children]
-        children_without_default = sum(no_default)
+        length = sum(map(len, children))
+        if self.common_preset:
+            length -= len(children) - 1
 
-        summed_child_lengths = sum(map(len, children))
-        if self.reset:
-            return (
-                summed_child_lengths
-                - children_without_default
-                + int(children_without_default > 0)
-            )
-        else:
-            return summed_child_lengths
+        return length
 
 
 class UnionIterator(IterationMethodIterator[Union]):
     #: Cumulated sum of the iterated sizes of the children, containing `int`s or
     #: `math.inf` values. After, and including, the first infinite children, it
-    #: only contains `math.inf` values. Its size is `len(self.sizes) + 1`.
+    #: only contains `math.inf` values. Its size is `len(self.sizes) + 1`, as
+    #: it is prefixed with a 0.
     cumsizes: list[int | float]
 
-    #: Indicates whether a child has a default value or not.
-    no_default: list[bool]
+    #: Value of a child before iteration over it starts
+    initial_value: int | DefaultIndex | None
 
-    #: Index of the first children without a default value.
-    first_without_default: int
+    #: Value of a child after iteration over it ends
+    final_value: int | DefaultIndex | None
 
     def __init__(self, tree: Union) -> None:
         super().__init__(tree)
 
         n = len(self.tree.children)
-        self.no_default = [False] * n
-        self.first_without_default = -2
         self.cumsizes = [0] + [math.inf] * n
         cumsize = 0
 
-        for i, (key, size) in enumerate(zip(self.keys, self.sizes)):
-            no_default = _has_no_default(self.tree.children[key])  # type: ignore[index]
-            self.no_default[i] = no_default
-            if no_default and self.first_without_default == -2:
-                self.first_without_default = i
-
+        for i, size in enumerate(self.sizes):
             if size is None:
                 self.cumsizes[i + 1] = math.inf
-
                 logger.warning(
                     f"A union contains an infinite tree at position {i}. During "
                     "iteration, its following siblings will always yield the "
                     "same value."
                 )
-
                 break
 
             cumsize += size
-            if self.tree.reset:
-                if no_default:
-                    cumsize -= 1
-                if self.first_without_default == i:
-                    cumsize += 1
+            if self.tree.common_preset and i > 0:
+                cumsize -= 1
 
             self.cumsizes[i + 1] = cumsize
 
+        if self.tree.preset == "default":
+            self.initial_value = DefaultIndex()
+        elif self.tree.preset == "first":
+            self.initial_value = 0
+        else:
+            assert self.tree.preset is None
+            self.initial_value = None
+
+        if self.tree.reset == "default":
+            self.final_value = DefaultIndex()
+        elif self.tree.reset == "first":
+            self.final_value = 0
+        elif self.tree.reset == "last":
+            self.final_value = -1
+        else:
+            assert self.tree.reset is None
+            self.final_value = None
+
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
-        positions: list[int | DefaultIndex | None] = [0] * len(self.iterators)
-        pos = position
+        positions: list[int | DefaultIndex | None] = [self.initial_value] * len(
+            self.iterators
+        )
 
         for i in range(len(self.iterators)):
-            if self.cumsizes[i] <= pos < self.cumsizes[i + 1]:
+            if self.cumsizes[i] <= position < self.cumsizes[i + 1]:
                 cumsize = self.cumsizes[i]
                 assert isinstance(cumsize, int)
 
-                child_pos = pos - cumsize
-                if self.tree.reset:
-                    child_pos += int(self.no_default[i]) - int(
-                        self.first_without_default == i
-                    )
+                child_pos = position - cumsize
+                if self.tree.common_preset and i > 0:
+                    child_pos += 1
 
                 positions[i] = child_pos
-            else:
-                if not self.tree.reset:
-                    positions[i] = None
-                elif self.no_default[i]:
-                    positions[i] = 0
+            elif self.cumsizes[i + 1] <= position:
+                if self.final_value == -1:
+                    size = self.sizes[i]
+                    # Only finite children can reach cumsizes[i + 1] <= position
+                    assert size is not None
+                    positions[i] = size - 1
                 else:
-                    positions[i] = DefaultIndex()
+                    positions[i] = self.final_value
 
         return positions
 
@@ -754,7 +788,7 @@ class UnaryNode(IterationTree):
     child: IterationTree
 
     def __post_init__(self):
-        object.__setattr__(self, "_configurations", self.child.configurations)
+        object.__setattr__(self, "configurations", self.child.configurations)
 
     def _len(self) -> int:
         return len(self.child)

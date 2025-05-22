@@ -435,12 +435,19 @@ class IterationTree(ABC):
         and gather them into a `Union` node with `reset=False`. A
         `MoveUpTransform` is used to get rid of the name of the
         configurations.
+
+        If the tree is not configurable, return it.
         """
+        if len(self.configurations) == 0:
+            return self
+
         from phileas.iteration import Union
         from phileas.iteration.node import MoveUpTransform
 
         children = {name: self.get_configuration(name) for name in self.configurations}
-        configurations = Union(children, reset=False)
+        configurations = Union(
+            children, lazy=True, preset=None, common_preset=False, reset=None
+        )
 
         return MoveUpTransform(configurations)
 

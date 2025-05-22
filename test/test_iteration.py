@@ -701,7 +701,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_union_iteration_infinite_inner(self):
+    def test_union_iteration_infinite_last(self):
         tree = generate_seeds(
             Union(
                 [
@@ -719,7 +719,9 @@ class TestIteration(unittest.TestCase):
         expected_list = [
             [1, 1, 0],
             [2, 1, 0],
+            [1, 1, 0],
             [1, 2, 0],
+            [1, 1, 0],
             [1, 1, 1],
             [1, 1, 2],
             [1, 1, 3],
@@ -731,7 +733,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_union_iteration_infinite_last(self):
+    def test_union_iteration_infinite_inner(self):
         tree = generate_seeds(
             Union(
                 [
@@ -748,16 +750,16 @@ class TestIteration(unittest.TestCase):
             iterated_list = list(itertools.islice(tree, 10))
 
         expected_list = [
-            [1, 3, 0, 3],
-            [2, 3, 0, 3],
-            [1, 1, 0, 3],
-            [1, 2, 0, 3],
-            [1, 3, 1, 3],
-            [1, 3, 2, 3],
-            [1, 3, 3, 3],
-            [1, 3, 4, 3],
-            [1, 3, 5, 3],
-            [1, 3, 6, 3],
+            [1, 1, 0, 1],
+            [2, 1, 0, 1],
+            [1, 1, 0, 1],
+            [1, 2, 0, 1],
+            [1, 1, 0, 1],
+            [1, 1, 1, 1],
+            [1, 1, 2, 1],
+            [1, 1, 3, 1],
+            [1, 1, 4, 1],
+            [1, 1, 5, 1],
         ]
 
         self.assertEqual(iterated_list, expected_list)
