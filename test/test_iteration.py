@@ -9,7 +9,6 @@ import hypothesis
 import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
-from typing_extensions import assert_never
 
 import phileas
 from phileas import iteration
@@ -38,7 +37,7 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.base import ChildPath
-from phileas.iteration.node import Pick, Shuffle, UnaryNode
+from phileas.iteration.node import Lazify, Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     flatten_datatree,
@@ -187,56 +186,95 @@ def unary_tree_node(draw, child: IterationTree) -> IterationTree:
     return Node(child)
 
 
+def cartesian_product(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> CartesianProduct:
+    return CartesianProduct(children, lazy=lazy)
+
+
+def union(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    presets: list[str | None] = ["first"]
+    if isinstance(children, dict):
+        presets.append(None)
+    preset = draw(st.sampled_from(["first"]))
+
+    common_presets = [False]
+    if preset == "first":
+        common_presets.append(True)
+    common_preset = draw(st.sampled_from(common_presets))
+
+    children_list = children
+    if not isinstance(children, list):
+        children_list = list(children.values())
+    assert isinstance(children_list, list)
+
+    resets = ["first", None]
+    try:
+        if all(child.safe_len() is not None for child in children_list):
+            resets.append("last")
+    except TypeError:  # This happens with NumericRange leaves
+        pass
+    reset = draw(st.sampled_from(["first"]))
+
+    return Union(
+        children, lazy=lazy, preset=preset, common_preset=common_preset, reset=reset
+    )
+
+
+def pick(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    return Pick(children, lazy=lazy)
+
+
+def configurations(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    assert isinstance(children, dict)
+
+    move_up = False
+    insert_name = False
+    if all(
+        isinstance(c, IterationMethod)
+        and not isinstance(c, Configurations)
+        and isinstance(c.children, dict)
+        for c in children.values()
+    ):
+        move_up = draw(st.booleans())
+
+        if move_up:
+            insert_name = False
+        else:
+            insert_name = draw(st.booleans())
+
+    default_child = draw(st.sampled_from(list(children.keys())))
+
+    return Configurations(
+        children,
+        lazy=False,
+        move_up=move_up,
+        insert_name=insert_name,
+        default_configuration=default_child,
+    )
+
+
 def iteration_method_node(
     draw, children: dict[Key, IterationTree] | list[IterationTree]
 ) -> IterationTree:
-    node_types: list[type[IterationMethod]] = [
-        CartesianProduct,
-        Union,
-        Pick,
+    node_factories = [
+        cartesian_product,
+        union,
+        pick,
     ]
+    lazy = False
     if isinstance(children, dict):
-        node_types.append(Configurations)
+        node_factories.append(configurations)
+        lazy = draw(st.booleans())
 
-    Node = draw(st.sampled_from(node_types))
-
-    if Node == CartesianProduct or Node == Pick:
-        return Node(children)
-    if Node == Union:
-        reset = True
-        if isinstance(children, dict):
-            reset = draw(st.booleans())
-        return Union(children, lazy=False, reset=reset)
-    elif Node == Configurations:
-        assert isinstance(children, dict)
-        assert Node == Configurations
-
-        move_up = False
-        insert_name = False
-        if all(
-            isinstance(c, IterationMethod)
-            and not isinstance(c, Configurations)
-            and isinstance(c.children, dict)
-            for c in children.values()
-        ):
-            move_up = draw(st.booleans())
-
-            if move_up:
-                insert_name = False
-            else:
-                insert_name = draw(st.booleans())
-
-        default_child = draw(st.sampled_from(list(children.keys())))
-
-        return Configurations(
-            children,
-            lazy=False,
-            move_up=move_up,
-            insert_name=insert_name,
-            default_configuration=default_child,
-        )
-    else:
-        assert_never(Node)
+    node_factory = draw(st.sampled_from(node_factories))
+    return node_factory(draw, children, lazy)
 
 
 class IdTransform(Transform):
@@ -298,6 +336,24 @@ def iterable_iteration_tree_and_index(draw):
 
 
 ### Tests ###
+
+
+def is_lazy(tree: IterationTree) -> bool:
+    lazy = False
+
+    def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+        nonlocal lazy
+        if isinstance(tree, IterationMethod) and tree.lazy:
+            lazy = True
+
+        if isinstance(tree, Lazify):
+            lazy = True
+
+        return tree
+
+    tree.depth_first_modify(inspect)
+
+    return lazy
 
 
 class TestIteration(unittest.TestCase):
@@ -427,6 +483,9 @@ class TestIteration(unittest.TestCase):
         if tree.safe_len() is None:
             return
 
+        if is_lazy(tree):
+            return
+
         iterator = iter(tree)
 
         forward = list(iterator)
@@ -452,6 +511,9 @@ class TestIteration(unittest.TestCase):
         tree, index = tree_index
         iterator = iter(tree)
 
+        if is_lazy(tree):
+            return
+
         if index == 0:
             return
 
@@ -468,6 +530,9 @@ class TestIteration(unittest.TestCase):
     @given(iterable_iteration_tree(), st.booleans())
     def test_same_iteration_after_reset(self, tree: IterationTree, reverse: bool):
         if reverse and tree.safe_len() is None:
+            return
+
+        if is_lazy(tree):
             return
 
         iterator = iter(tree)
@@ -686,15 +751,17 @@ class TestIteration(unittest.TestCase):
             {
                 0: IntegerRange(1, 2, default_value=10),
                 1: IntegerRange(1, 2, default_value=10),
-                2: IntegerRange(1, 2),
+                2: IntegerRange(1, 2, default_value=10),
             },
+            preset="default",
+            reset="default",
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10, 2: 1},
-            {0: 2, 1: 10, 2: 1},
-            {0: 10, 1: 1, 2: 1},
-            {0: 10, 1: 2, 2: 1},
+            {0: 1, 1: 10, 2: 10},
+            {0: 2, 1: 10, 2: 10},
+            {0: 10, 1: 1, 2: 10},
+            {0: 10, 1: 2, 2: 10},
             {0: 10, 1: 10, 2: 1},
             {0: 10, 1: 10, 2: 2},
         ]
@@ -727,8 +794,6 @@ class TestIteration(unittest.TestCase):
             [1, 1, 3],
             [1, 1, 4],
             [1, 1, 5],
-            [1, 1, 6],
-            [1, 1, 7],
         ]
 
         self.assertEqual(iterated_list, expected_list)
@@ -769,17 +834,19 @@ class TestIteration(unittest.TestCase):
             {
                 0: IntegerRange(1, 2, default_value=10),
                 1: IntegerRange(1, 2, default_value=10),
-                2: IntegerRange(1, 2),
+                2: IntegerRange(1, 2, default_value=10),
             },
             lazy=True,
+            preset="default",
+            reset="default",
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10, 2: 1},
+            {0: 1, 1: 10, 2: 10},
             {0: 2},
             {0: 10, 1: 1},
             {1: 2},
-            {1: 10},
+            {1: 10, 2: 1},
             {2: 2},
         ]
 
