@@ -48,13 +48,14 @@ class IterationMethod(IterationTree):
     dictionary.
 
     In order to implement a concrete iteration method, you should sub-class
-    `IterationMethod` and implement a corresponding `IterationMethodIterator`,
-    which is returned by `_iter()`.
+    :py:class:`IterationMethod` and implement a
+    corresponding :py:class:`IterationMethodIterator`, which is returned by
+    :py:meth:`_iter`.
 
-    This should remain the only node in an iteration tree that can hold `dict`
-    and `list` children. If you are tempted to create another node doing so,
-    you should verify that it cannot be done by sub-classing `IterationMethod`
-    instead.
+    This should remain the only node in an iteration tree that can hold ``dict``
+    and ``list`` children. If you are tempted to create another node doing so,
+    you should verify that it cannot be done by sub-classing
+    :py:class:`IterationMethod` instead.
     """
 
     #: The children of the node. It must not be empty.
@@ -62,11 +63,11 @@ class IterationMethod(IterationTree):
 
     #: Order of iteration over the children. How it is used depends on the
     #: concrete iteration method implementation. It must be a permutation of the
-    #: set of keys of `children`.
+    #: set of keys of ``children``.
     order: list[Key] | None = None
 
     #: Notify the iteration method to be lazy. For now, this feature is only
-    #: supported for `dict` children. In this case, lazy iteration will just
+    #: supported for ``dict`` children. In this case, lazy iteration will just
     #: yield the keys that have changed at each step.
     #:
     #: Note that concrete iteration method classes are not required to actually
@@ -148,9 +149,9 @@ class IterationMethod(IterationTree):
         configs: Configurations,
     ):
         """
-        Given a dict containing the currently processed `children` of the tree,
-        update it with configuration `requested_config_name` from the child
-        `configs`, identified by `configs_key`, of the current node.
+        Given a dict containing the currently processed ``children`` of the tree,
+        update it with configuration ``requested_config_name`` from the child
+        ``configs``, identified by ``configs_key``, of the current node.
         """
         from .leaf import IterationLiteral
 
@@ -216,7 +217,8 @@ class IterationMethod(IterationTree):
     def to_pseudo_data_tree(self) -> PseudoDataTree:
         if isinstance(self.children, list):
             return [child.to_pseudo_data_tree() for child in self.children]
-        else:  # isinstance(self.children, dict)
+        else:
+            assert isinstance(self.children, dict)
             return {
                 key: value.to_pseudo_data_tree() for key, value in self.children.items()
             }
@@ -276,8 +278,8 @@ class IterationMethod(IterationTree):
     # Note: self.children[child_key] is not properly typed. Indeed, child_key
     # can be a dict or a list key, and there is no guarantee that self.children
     # is of the corresponding type. However, if the key does not exist, a
-    # `KeyError` will be raised, which is the expected behavior. For those
-    # reasons, it is valid to ignore[index] all the self.children
+    # :py:class:`KeyError` will be raised, which is the expected behavior. For
+    # those reasons, it is valid to ignore[index] all the self.children
     # [child_key] expressions.
 
     def _get(self, child_key: Key | _Child) -> IterationTree:
@@ -334,11 +336,11 @@ T = TypeVar("T", bound=IterationMethod, covariant=True)
 
 class IterationMethodIterator(TreeIterator[T]):
     """
-    Base class used to implement concrete `IterationMethod` nodes iterators, and
-    providing helper attributes to do so.
+    Base class used to implement concrete :py:class:`IterationMethod` nodes
+    iterators, and providing helper attributes to do so.
     """
 
-    #: Children iterators stored in a list. This, with `keys`, allows
+    #: Children iterators stored in a list. This, with :py:attr:`keys`, allows
     #: child-class to only implement iteration over lists.
     #:
     #: If the iteration tree does specify an order, use it. Otherwise,
@@ -346,20 +348,21 @@ class IterationMethodIterator(TreeIterator[T]):
     #: order.
     iterators: list[TreeIterator]
 
-    #: Size of each of the `iterators`. `None` represents infinite trees.
+    #: Size of each of the :py:attr:`iterators`. ``None`` represents infinite
+    #: trees.
     sizes: list[int | None]
 
     #: Last returned positions of the child iterators.
     positions: Sequence[int | DefaultIndex | None]
 
     #: Access keys for the children iterators, such that
-    #: `iterators[i]` is an iterator of `tree.children[keys[i]]`.
+    #: ``iterators[i]`` is an iterator of ``tree.children[keys[i]]``.
     #:
     #: Note that the previous statement is not properly typed, as the current
-    #: type hints do not state that `keys` contains valid keys for `children`.
-    #: However, the constructor takes care of the validity of the runtime
-    #: types. Because of that, ignoring type checks can be required when
-    #: implementing concrete iteration methods.
+    #: type hints do not state that ``keys`` contains valid keys for
+    #: ``children``. However, the constructor takes care of the validity of the
+    #: runtime types. Because of that, ignoring type checks can be required
+    #: when implementing concrete iteration methods.
     keys: list[Key | int]
 
     def __init__(self, tree: T) -> None:
@@ -369,7 +372,7 @@ class IterationMethodIterator(TreeIterator[T]):
             self.keys = tree.order
         elif isinstance(tree.children, list):
             self.keys = list(range(len(tree.children)))
-        else:  # isinstance(tree.children, dict)
+        else:
             # An exception will be raised if comparison is not possible
             assert isinstance(tree.children, dict)
             self.keys = sorted(tree.children.keys(), key=str)
@@ -395,16 +398,16 @@ class IterationMethodIterator(TreeIterator[T]):
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
         """
         Only method required to implement an iteration method. It returns the
-        index of each of the `iterators` corresponding to a global `position`.
-        It supports the index `None`, meaning that this children value should
-        be missing.
+        index of each of the :py:attr:`iterators` corresponding to a global
+        ``position``. It supports the index ``None``, meaning that this
+        children value should be missing.
         """
         raise NotImplementedError()
 
     def _current_value(self) -> DataTree:
         """
-        Converts the output list of positions of `_children_positions()` to the
-        expected list or map of children values.
+        Converts the output list of positions of :py:meth:`_children_positions`
+        to the expected list or map of children values.
         """
         new_positions = self._children_positions(self.position)
 
@@ -429,15 +432,15 @@ class IterationMethodIterator(TreeIterator[T]):
 class CartesianProduct(IterationMethod):
     """
     Iteration over the cartesian product of the children. The iteration order is
-    the same as `itertools.product`. In other words, iteration will behave
-    roughly as
+    the same as :py:func:`itertools.product`. In other words, iteration will
+    behave roughly as
 
-    ```py
-    for v1 in c1:
-        for v2 in c2:
-            for v3 in c3:
-                yield [v1, v2, v3]
-    ```
+    .. code-block:: python
+
+        for v1 in c1:
+            for v2 in c2:
+                for v3 in c3:
+                    yield [v1, v2, v3]
 
     If an order is specified, its first element will correspond to the outermost
     loop, and its last to the innermost one.
@@ -462,9 +465,9 @@ class CartesianProduct(IterationMethod):
 
 
 class CartesianProductIterator(IterationMethodIterator[CartesianProduct]):
-    #: Backward cumulated products of `sizes`, with `size` + 1 elements, and
-    #: ending with a 1. Before, and including, the last infinite child, it only
-    #: contains `None`.
+    #: Backward cumulated products of :py:attr:`sizes`, with ``size + 1``
+    #: elements, and ending with a ``1``. Before, and including, the last
+    #: infinite child, it only contains ``None``.
     cumsizes: list[int | None]
 
     def __init__(self, product: CartesianProduct):
@@ -531,24 +534,25 @@ class Union(IterationMethod):
     Iteration over one child at a time, starting with the first one (or the
     first one of the order, if specified). Children that are not being iterated
     over have
-     - their default value if it exists and
-     - their first value otherwise.
+
+    - their default value if it exists and
+    - their first value otherwise.
     """
 
     #: Defines which value to use before starting the iteration over a child.
     #: "first" uses the child's first value and "default" its default value.
-    #: `None` does not set the children values before iteration. Thus, it is
-    #:  only applicable to dict children.
+    #: ``None`` does not set the children values before iteration. Thus, it is
+    #: only applicable to dict children.
     preset: Literal["first"] | Literal["default"] | None = "first"
 
-    #: You can only set it when `preset == "first"`. Then, children are all set
+    #: You can only set it when ``preset == "first"``. Then, children are all set
     #: to their first value at the first iteration. When iterating over them,
     #: they start directly at their second value.
     common_preset: bool = False
 
     #: Defines which value to use after ending the iteration over a
     #: child. "first" resets it to its starting value, "last" leaves it
-    #: unchanged, and "default" resets it to its default value. `None` does not
+    #: unchanged, and "default" resets it to its default value. ``None`` does not
     #: reset the child after iteration. Thus, it is only applicable to dict
     #: children.
     reset: Literal["first"] | Literal["last"] | Literal["default"] | None = "first"
@@ -598,10 +602,10 @@ class Union(IterationMethod):
 
 
 class UnionIterator(IterationMethodIterator[Union]):
-    #: Cumulated sum of the iterated sizes of the children, containing `int`s or
-    #: `math.inf` values. After, and including, the first infinite children, it
-    #: only contains `math.inf` values. Its size is `len(self.sizes) + 1`, as
-    #: it is prefixed with a 0.
+    #: Cumulated sum of the iterated sizes of the children, containing ``int``
+    #: or ``math.inf`` values. After, and including, the first infinite children,
+    #: it only contains ``math.inf`` values. Its size is ``len(self.sizes) + 1``,
+    #: as it is prefixed with a 0.
     cumsizes: list[int | float]
 
     #: Value of a child before iteration over it starts
@@ -682,8 +686,9 @@ class UnionIterator(IterationMethodIterator[Union]):
 class Pick(RandomTree, IterationMethod):
     """
     Randomly pick and return one child at a time. For finite trees, it behaves
-    in a way similar to composing `Shuffle` and `Union(reset=False)` nodes. It
-    can additionally handle infinite children, whereas `Shuffle` cannot.
+    in a way similar to composing :py:class:`Shuffle` and ``Union
+    (reset=False)`` nodes. It can additionally handle infinite children,
+    whereas :py:class:`Shuffle` cannot.
     """
 
     #: Key of the child to use as a default value.
@@ -829,7 +834,7 @@ class UnaryNode(IterationTree):
     def _replace_root(
         self, Node: type[IterationTree], *args, **kwargs
     ) -> IterationTree:
-        # The signature of `Node` is statically unknown
+        # The signature of ``Node`` is statically unknown
         return Node(self.child, *args, **kwargs)  # type: ignore[call-arg]
 
     def _depth_first_modify(
@@ -893,15 +898,15 @@ class Transform(UnaryNode):
     """
     Node that modifies the data trees generated by its child during iteration.
 
-    If you want to transform a `list` or `dict` of iteration trees, you should
-    wrap them in an `IterationMethod` object first.
+    If you want to transform a ``list`` or ``dict`` of iteration trees, you should
+    wrap them in an :py:class:`IterationMethod` object first.
     """
 
     @abstractmethod
     def transform(self, data_tree: DataTree) -> DataTree:
         """
         Method implemented by concrete sub-classes to modify the data tree
-        generated by the `child` tree.
+        generated by the :py:attr:`child` tree.
         """
         raise NotImplementedError()
 
@@ -952,20 +957,21 @@ class Accumulator(Transform):
     """
     Transform node that accumulates its inputs, as a kind of *unlazifying*
     transform:
-      - if its successive inputs are dictionaries, merge them using the union
-        operator (recursively or not), and return the results;
-      - otherwise, leave its inputs untouched.
+
+    - if its successive inputs are dictionaries, merge them using the union
+      operator (recursively or not), and return the results;
+    - otherwise, leave its inputs untouched.
     """
 
     #: Specify if the accumulation must be done recursively or not. For example,
-    #: accumulating values `{"a": 1, "b": {"ba": 1}}` and `{"a": 2, "b":
-    #: {"bb": 2}}` recursively will return `{"a": 2, "b": {ba": 1, "bb": 2}}`,
+    #: accumulating values ``{"a": 1, "b": {"ba": 1}}`` and ``{"a": 2, "b":
+    #: {"bb": 2}}`` recursively will return ``{"a": 2, "b": {ba": 1, "bb": 2}}``,
     #: whereas doing it non-recursively will return ``{"a": 2, "b":
-    #: {"bb": 2}}`.
+    #: {"bb": 2}}``.
     recursive: bool = False
 
     #: Start value of the accumulator, which must either be a dictionary, or
-    #: `None`.
+    #: ``None``.
     start_value: dict[Key, DataTree] | None = None
 
     def _iter(self) -> TreeIterator:
@@ -1021,7 +1027,7 @@ class Lazify(Transform):
 
 class LazifyIterator(TransformIterator[Lazify]):
     #: Accumulation of the values yielded by the tree iterator. If it generates
-    #: a non-dict value, then stores `None`.
+    #: a non-dict value, then stores ``None``.
     accumulated_value: dict[Key, DataTree] | None
 
     def __init__(self, tree: Lazify):
@@ -1093,23 +1099,25 @@ class MoveUpTransform(Transform):
 class Configurations(IterationMethod):
     """
     Represents a set of named configurations that can be invoked using
-    `IterationTree.get_configuration`. When it is called, with argument `name`,
-    all the `Configurations` nodes that have a matching configuration will be
-    replaced by it. Other ones will be replaced by their default value.
+    :py:meth:`IterationTree.get_configuration`. When it is called, with argument
+    ``name``, all the :py:class:`Configurations` nodes that have a matching
+    configuration will be replaced by it. Other ones will be replaced by their
+    default value.
 
     This allows to escape from the recursive and local nature of trees: a single
     call can modify nodes throughout a whole tree. However, it is often
     convenient to convert configurable trees back to classical,
     non-configurable trees. This is done by
-    `IterationTree.unroll_configurations()`.
+    :py:meth:`IterationTree.unroll_configurations`.
 
-    The `Configurations` node holds a set of iteration trees,
+    The :py:class:`Configurations` node holds a set of iteration trees,
     called *configurations*, which are identified by their *name*. Two
-    parameters, `move_up` and `insert_name`, control how
-    `IterationTree.get_configuration` behaves.
+    parameters, :py:attr:`move_up` and :py:attr:`insert_name`, control how
+    :py:meth:`IterationTree.get_configuration` behaves.
 
-    By default, `move_up == insert_name == False`. The `Configuration` node is
-    simply replaced by the content of the requested configuration.
+    By default, ``move_up == insert_name == False``. The
+    :py:class:`Configuration` node is simply replaced by the content of the
+    requested configuration.
 
     >>> tree = CartesianProduct({
     ...     "instrument": Configurations({
@@ -1126,10 +1134,10 @@ class Configurations(IterationMethod):
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': {'param1': '1-1', 'param2': '1-2'}}
 
-    If `move_up == True`, the content of the chosen configuration is moved one
-    level up, so that it is at the same level as the `Configurations` node.
-    This requires it to have an `IterationMethod` parent with `dict` children.
-    This can be used to factorize configurations.
+    If ``move_up == True``, the content of the chosen configuration is moved one
+    level up, so that it is at the same level as the :py:class:`Configurations`
+    node. This requires it to have an :py:class:`IterationMethod` parent with
+    ``dict`` children. This can be used to factorize configurations.
 
     >>> tree = CartesianProduct({
     ...     "_": Configurations({
@@ -1145,10 +1153,10 @@ class Configurations(IterationMethod):
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'param1': '1-1', 'param2': '2'}
 
-    If `insert_name == True`, the name of the requested configuration is
+    If ``insert_name == True``, the name of the requested configuration is
     inserted in the resulting tree. If the requested configuration allows it
-    (_ie_. it is an `IterationMethod` with `dict` children), the name is
-    inserted into itself, with the key `_configuration`.
+    (_ie_. it is an :py:class:`IterationMethod` with ``dict`` children), the
+    name is inserted into itself, with the key ``_configuration``.
 
     >>> tree = CartesianProduct({
     ...     "instrument": Configurations({
@@ -1165,8 +1173,8 @@ class Configurations(IterationMethod):
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': {'_configuration': 'config1', 'param1': '1-1', 'param2': '1-2'}}
 
-    If, additionally, `move_up == True`, the name of the configuration is
-    inserted instead of the `Configurations` node.
+    If, additionally, ``move_up == True``, the name of the configuration is
+    inserted instead of the :py:class:`Configurations` node.
 
     >>> tree = CartesianProduct({
     ...     "instrument": Configurations({
@@ -1183,8 +1191,9 @@ class Configurations(IterationMethod):
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': 'config1', 'param1': '1-1', 'param2': '2'}
 
-    However, if the requested configuration is not an `IterationMethod`, its
-    `name` is inserted as a sibling, assigned to the key `f"_{name}_configuration"`.
+    However, if the requested configuration is not an
+    :py:class:`IterationMethod`, its ``name`` is inserted as a sibling, assigned
+    to the key ``f"_{name}_configuration"``.
 
     >>> tree = CartesianProduct({
     ...     "param": Configurations({
@@ -1200,8 +1209,8 @@ class Configurations(IterationMethod):
     most situations. It is recommended to keep all the configurations with the
     same shape.
 
-    The `insert_name` is not necessary. It is possible to replace it with the
-    following kind of tree:
+    :py:attr:`insert_name` is not necessary. It is possible to replace it with
+    the following kind of tree:
 
     >>> tree = CartesianProduct({
     ...     "param": Configurations({
@@ -1225,16 +1234,17 @@ class Configurations(IterationMethod):
 
     #: If set, the content of a requested configuration is moved up, at the
     #: parent level of the current node. In other words, it becomes a sibling
-    #: of the current `Configurations` node.
+    #: of the current :py:class:`Configurations` node.
     #:
-    #:  Otherwise, the content is inserted at the same level as the
-    #:  configurations themselves.
+    #: Otherwise, the content is inserted at the same level as the
+    #: configurations themselves.
     move_up: bool = False
 
     #: If set, insert the name of the requested configuration when calling
-    #: `get_configuration`. If `move_up`, then the `Configurations` node is
-    #: replaced by this name. Otherwise, a `"_configuration"` sibling node is
-    #: inserted.
+    #: :py:meth:`~phileas.iteration.IterationTree.get_configuration`.
+    #: If :py:attr:`move_up`, then the :py:class:`Configurations` node is
+    #: replaced by this name. Otherwise, a ``"_configuration"`` sibling node
+    #: is inserted.
     insert_name: bool = False
 
     def __post_init__(self):

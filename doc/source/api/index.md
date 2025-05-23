@@ -17,4 +17,5 @@ Function, classes and attributes documentations:
 :maxdepth: 1
 
 factory
+iteration
 :::

@@ -42,11 +42,11 @@ myst_heading_anchors = 6
 
 ## Autodoc
 autodoc_type_aliases = {
-    "DataTree": "phileas.iteration.DataTree",
-    "DataLiteral": "phileas.iteration.DataLiteral",
-    "PseudoDataTree": "phileas.iteration.PseudoDataTree",
-    "PseudoDataLiteral": "phileas.iteration.PseudoDataLiteral",
-    "Key": "phileas.iteration.Key",
+    "DataTree": "phileas.iteration.base.DataTree",
+    "DataLiteral": "phileas.iteration.base.DataLiteral",
+    "PseudoDataTree": "phileas.iteration.base.PseudoDataTree",
+    "PseudoDataLiteral": "phileas.iteration.base.PseudoDataLiteral",
+    "Key": "phileas.iteration.base.Key",
 }
 autodoc_member_order = "bysource"
 

@@ -36,7 +36,7 @@ class RandomTree:
     #:
     #: For iteration to be possible, the seed must be set. If you don't want to
     #: manually specify the seed, you can use
-    #: `phileas.iteration.utility.generate_seeds`.
+    #: :py:func:`~phileas.iteration.utility.generate_seeds`.
     seed: Seed | None = None
 
 

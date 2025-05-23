@@ -28,7 +28,7 @@ from ..utility import Sentinel
 ### Data tree ###
 #################
 
-#: Data values that can be used
+#: Data values that can be used as data tree leaves
 DataLiteral = typing.Union[None, bool, str, int, float, "_NoDefault"]
 
 #: Dictionary keys
@@ -78,12 +78,12 @@ class TreeIterator(ABC, Generic[T]):
 
     Compared to a usual iterator, it supports forward and backward iteration,
     and is endlessly usable. This means that, whenever it is "exhausted"
-    (`__next__()` raises `StopIteration`), it can either be reset to its
-    starting position with `reset()`, or its iteration direction can be
-    switched using `reverse()`.
+    (:py:meth:`__next__` raises ``StopIteration``), it can either be reset to
+    its starting position with :py:meth:`reset`, or its iteration direction can
+    be switched using :py:meth:`reverse`.
 
-    Additionally, it supports random access with the `__getitem__` method, which
-    uses `update` under the hood.
+    Additionally, it supports random access with the :py:meth:`__getitem__`
+    method, which uses :py:meth:`update` under the hood.
     """
 
     #: Reference to the tree being iterated over.
@@ -91,22 +91,25 @@ class TreeIterator(ABC, Generic[T]):
 
     #: Current iteration direction of the iterator.
     #:
-    #: This attribute is managed by `TreeIterator`, and should thus not be
-    #: modified by sub-classes. However, it can be read.
+    #: .. warning
+    #:     This attribute is managed by :py:class:`TreeIterator`, and should
+    #:     thus not be modified by sub-classes. However, it can be read.
     __forward: bool
 
     #: Position of the last value that was yielded. Valid values start at -1
     #: (backward-exhausted iterator, or forward iteration start), and go up to
-    #: `size`(forward-exhausted iterator, or backward iteration start).
+    #: :py:attr:`size` (forward-exhausted iterator, or backward iteration
+    #: start).
     #:
-    #: It can be directly modified by `update`.
+    #: It can be directly modified by :py:meth:`update`.
     #:
-    #: This attribute is managed by `TreeIterator`, thus it must not be modified
-    #: by sub-classes. However, it can be read.
+    #: .. warning
+    #:     This attribute is managed by :py:class:`TreeIterator`, thus it must
+    #:     not be modified by sub-classes. However, it can be read.
     position: int
 
-    #: Cached size of the iterated tree. Consider using this instead of `len
-    #: (self.tree)`, as computing the length of a tree can be an expensive
+    #: Cached size of the iterated tree. Consider using this instead of ``len
+    #: (self.tree)``, as computing the length of a tree can be an expensive
     #: operation.
     size: int | None
 
@@ -142,15 +145,15 @@ class TreeIterator(ABC, Generic[T]):
     def reverse(self):
         """
         Reverse the iteration direction of the iterator, but stay at the same
-        position. Thus, if `it` is any `TreeIterator`, the following behaviour
-        is expected:
+        position. Thus, if ``it`` is any :py:class:`TreeIterator`, the
+        following behavior is expected:
 
         >>> it.reset()
         >>> it.reverse()
         >>> list(it)
         []
 
-        If you want to iterate over an iteration tree `tree` backward, you have
+        If you want to iterate over an iteration tree ``tree`` backward, you have
         to reset the iterator after having reversed it:
 
         >>> it = iter(tree)
@@ -163,13 +166,13 @@ class TreeIterator(ABC, Generic[T]):
     def update(self, position: int):
         """
         Update the position of the iterator to any supported position. This
-        includes the positions ranging from `0` to `self.size - 1`, included, as
+        includes the positions ranging from ``0`` to ``self.size - 1``, included, as
         well as
-            - `-1`, which represents a reset forward iterator and
-            - `self.size`, which represents a reset backward iterator.
+        - ``-1``, which represents a reset forward iterator and
+        - ``self.size``, which represents a reset backward iterator.
 
-        If an invalid position is requested, an `IndexError` is raised, and the
-        state of the iterator remains unchanged.
+        If an invalid position is requested, an :py:class:`IndexError` is
+        raised, and the state of the iterator remains unchanged.
         """
         if position < -1:
             raise IndexError("Cannot update to a position < -1.")
@@ -184,11 +187,12 @@ class TreeIterator(ABC, Generic[T]):
 
     def __getitem__(self, position: int | DefaultIndex) -> DataTree:
         """
-        Return the element at `position`. If it is a `DefaultIndex`, return the
-        default value of the iteration tree, using the
-        `NoDefaultPolicy.FIRST_ELEMENT policy`.
+        Return the element at ``position``. If it is a :py:class:`DefaultIndex`,
+        return the default value of the iteration tree, using the
+        :py:attr:`NoDefaultPolicy.FIRST_ELEMENT policy`.
 
-        Only an `IndexError` can be raised by this method.
+        Raises:
+            IndexError: if the index is invalid.
         """
         if isinstance(position, DefaultIndex):
             return self.tree.default(NoDefaultPolicy.FIRST_ELEMENT)
@@ -212,12 +216,13 @@ class TreeIterator(ABC, Generic[T]):
     @abstractmethod
     def _current_value(self) -> DataTree:
         """
-        Return the value at `position`.
+        Return the value at :py:attr:`position`.
 
         Assumptions:
+
          - The ownership of the return value is given to the user.
-         - `self._position` is a valid value, between `0` and `self.size - 1`.
-           Thus, it should never raise a `StopIteration`.
+         - ``self._position`` is a valid value, between ``0`` and ``self.size -
+           1``. Thus, it should never raise a :py:class:`StopIteration`.
         """
         raise NotImplementedError()
 
@@ -244,7 +249,7 @@ class TreeIterator(ABC, Generic[T]):
 class OneWayTreeIterator:
     """
     Iterator used in cases where random access iteration is too cumbersome to
-    implement. It only requires implementing the `_next` method.
+    implement. It only requires implementing the :py:meth:`_next` method.
 
     Random access is obtained by using a cache. Thus, this method is usually
     more time and memory expensive than classical random access iterators, so
@@ -253,8 +258,9 @@ class OneWayTreeIterator:
 
     This is not a subclass of `TreeIterator` in order to prevent diamond
     inheritance issues. Child classes must thus inherit from this, alongside
-    `TreeIterator`. It is recommended to place `OneWayTreeIterator` first, so
-    that its `_current_value` implementation is used.
+    :py:class:`TreeIterator`. It is recommended to place
+    :py:meth:`OneWayTreeIterator` first, so that its :py:meth:`_current_value`
+    implementation is used.
     """
 
     # Attributes defined in `TreeIterator` and used here
@@ -301,7 +307,7 @@ class OneWayTreeIterator:
 
 class _Child(Sentinel):
     """
-    Sentinel representing the index of the only child of a 1-ary iteration node.
+    Sentinel representing the index of the only child of a unary nodes.
     """
 
     pass
@@ -316,19 +322,20 @@ ChildPath = list[Key | _Child]
 
 class NoDefaultPolicy(Enum):
     """
-    Behavior of `default` for trees not having a default value.
+    Behavior of :py:meth:`IterationTree.default` for trees not having a default
+    value.
     """
 
-    #: Raise a `NoDefaultError` if any of the nodes in the tree does not have a
-    #: default value.
+    #: Raise a :py:class:`NoDefaultError` if any of the nodes in the tree does
+    #: not have a default value.
     ERROR = "ERROR"
 
-    #: Return the `_NoDefault` sentinel if any of the nodes in the tree does not
-    #: have a default value.
+    #: Return the :py:class:`_NoDefault` sentinel if any of the nodes in the
+    #: tree does not have a default value.
     SENTINEL = "SENTINEL"
 
     #: Skip elements without a default element. If the root of the tree does
-    #: not have a default value, return a `_NoDefault` sentinel.
+    #: not have a default value, return a :py:class:`_NoDefault` sentinel.
     #:
     #: Note that this is not supported by iteration method nodes with list
     #: children.
@@ -340,8 +347,8 @@ class NoDefaultPolicy(Enum):
 
 class NoDefaultError(Exception):
     """
-    Indicates that `default()` has been called on an iteration tree where a node
-    does not have a default value.
+    Indicates that :py:meth:`IterationTree.default` has been called on an
+    iteration tree where a node does not have a default value.
     """
 
     #: Path of a child without a default value.
@@ -397,8 +404,8 @@ class IterationTree(ABC):
     able to build a default data tree, which (usually) has the same shape as the
     generated data tree.
 
-    An iteration tree cannot be modified, as it is a frozen `dataclass`.
-    Instead, a new one must be created from this one.
+    An iteration tree cannot be modified, as it is a frozen
+    :py:class:`dataclass`. Instead, a new one must be created from this one.
     """
 
     #: Names of the available configurations.
@@ -409,8 +416,9 @@ class IterationTree(ABC):
     def get_configuration(self, key: Key) -> IterationTree:
         """
         Returns a given configuration of the tree, if it exists. Otherwise,
-        raises a `KeyError`. See `Configurations` node for more details on the
-        behavior of this method.
+        raises a :py:class:`KeyError`. See
+        :py:class:`~phileas.iteration.Configurations` node for more details on
+        the behavior of this method.
         """
         if key not in self.configurations:
             raise KeyError(f"Configuration {key} does not exist.")
@@ -422,7 +430,7 @@ class IterationTree(ABC):
         """
         Actual implementation of the configuration access in sub-classes.
 
-        `config_name` is assumed to be a valid configuration of the tree, so
+        ``config_name`` is assumed to be a valid configuration of the tree, so
         recursive calls either return an actual configuration, or the
         unmodified tree.
         """
@@ -430,11 +438,12 @@ class IterationTree(ABC):
 
     def unroll_configurations(self) -> IterationTree:
         """
-        Transforms a configurable tree, *ie*. one with `configurations !={}`, to
-        a non-configurable tree. It requests all the available configurations,
-        and gather them into a `Union` node with `reset=False`. A
-        `MoveUpTransform` is used to get rid of the name of the
-        configurations.
+        Transforms a configurable tree, *ie*. one with ``configurations !=
+        {}``, to a non-configurable tree. It requests all the available
+        configurations, and gather them into
+        a :py:class:`~phileas.iteration.Union` node with ``reset=False``. A
+        :py:class:`~phileas.iteration.MoveUpTransform` is used to get rid of the
+        name of the configurations.
 
         If the tree is not configurable, return it.
         """
@@ -469,8 +478,8 @@ class IterationTree(ABC):
     @abstractmethod
     def _iter(self) -> TreeIterator:
         """
-        Implementation of `__iter__` which assumes that `self` does not have
-        any configuration.
+        Implementation of :py:meth:`__iter__` which assumes that ``self`` does
+        not have any configuration.
         """
         raise NotImplementedError()
 
@@ -478,9 +487,9 @@ class IterationTree(ABC):
         """
         Return the number of data trees represented by the iteration tree. If it
         is finite, it is the same as the number of elements yielded by
-        `__iter__`. Otherwise, an `InfiniteLength` is raised.
+        :py:meth:`__iter__`. Otherwise, an :py:class:`InfiniteLength` is raised.
 
-        See `safe_len` for a method that does not raise errors.
+        See :py:meth:`safe_len` for a method that does not raise errors.
         """
         if len(self.configurations) == 0:
             return self._len()
@@ -493,7 +502,7 @@ class IterationTree(ABC):
         """
         Return the number of data trees represented by the iteration tree. If it
         is finite, it is the same as the number of elements yielded by
-        `__iter__`. Otherwise, return `None`.
+        :py:meth:`__iter__`. Otherwise, return ``None``.
         """
         try:
             return len(self)
@@ -503,15 +512,15 @@ class IterationTree(ABC):
     @abstractmethod
     def _len(self) -> int:
         """
-        Implementation of `__len__` which assumes that `self` does not have
-        any configuration.
+        Implementation of :py:meth:`__len__` which assumes that ``self`` does
+        not have any configuration.
         """
         raise NotImplementedError()
 
     def iterate(self) -> TreeIterator:
         """
-        Implementation of `__len__` which assumes that `self` does not have
-        any configuration.
+        Implementation of :py:meth:`__len__` which assumes that ``self`` does
+        not have any configuration.
         """
         raise NotImplementedError()
 
@@ -527,7 +536,7 @@ class IterationTree(ABC):
     ) -> DataTree | _NoDefault:
         """
         Returns a default data tree. If the tree does not have a default value,
-        follows the behavior dictated by `no_default_policy`.
+        follows the behavior dictated by ``no_default_policy``.
         """
         try:
             return self._default(no_default_policy)
@@ -546,8 +555,8 @@ class IterationTree(ABC):
     @abstractmethod
     def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree | _NoDefault:
         """
-        Concrete implementation of `default()`. It returns the default value,
-        or raises a `NoDefaultError` if it is not defined.
+        Concrete implementation of :py:meth:`default`. It returns the default
+        value, or raises a :py:class:`NoDefaultError` if it is not defined.
         """
         raise NotImplementedError()
 
@@ -568,9 +577,9 @@ class IterationTree(ABC):
 
     def with_params(self, path=ChildPath | None, **kwargs) -> IterationTree:
         """
-        Returns a similar iteration tree, where the node at `path` is assigned
-        the given keyword parameters. If `path` is not specified, modifies the
-        root of the tree directly.
+        Returns a similar iteration tree, where the node at ``path`` is assigned
+        the given keyword parameters. If ``path`` is not specified, modifies
+        the root of the tree directly.
         """
         valid_path = []
         if path is not None:
@@ -620,7 +629,7 @@ class IterationTree(ABC):
     def _remove_child(self, child_key: Key | _Child) -> IterationTree:
         """
         Remove a child of the root, and return the newly created tree. Raises a
-        `KeyError` if there is no child with this key.
+        :py:class:`KeyError` if there is no child with this key.
 
         The initial object should not be modified. It is preferable to work with
         a copy.
@@ -634,7 +643,8 @@ class IterationTree(ABC):
         """
         Change the root node of a tree, keeping the remaining of the tree
         unmodified. In order to keep a valid tree structure, `Node` must have
-        the same type as the current root, otherwise a `TypeError` is raised.
+        the same type as the current root, otherwise a :py:class:`TypeError` is
+        raised.
 
         The initial object should not be modified. It is preferable to work with
         a copy.
@@ -650,14 +660,14 @@ class IterationTree(ABC):
 
         If there is already a node at this location, it will be replaced.
 
-        If the specified tree is `None`, a node is supposed to exist at this
+        If the specified tree is ``None``, a node is supposed to exist at this
         location (otherwise, a `KeyError` is raised), and will be removed if
         possible. Only iteration methods nodes will support child removal, see
-        their implementation of `_remove_child`. In any other case, a
-        `TypeError` is raised.
+        their implementation of :py:meth:`_remove_child`. In any other case, a
+        :py:class:`TypeError` is raised.
 
         Note that the root of a tree cannot be removed, so specifying an empty
-        path with a `None` tree will raise a `KeyError`.
+        path with a ``None`` tree will raise a :py:class:`KeyError`.
         """
         if tree is None and len(path) == 1:
             return self._remove_child(path[0])
@@ -679,7 +689,7 @@ class IterationTree(ABC):
 
     def remove_child(self, path: ChildPath) -> IterationTree:
         """
-        Remove a node in a tree. It is equivalent to `insert_child(path, None)`.
+        Remove a node in a tree. It is equivalent to ``insert_child(path, None)``.
         """
         return self.insert_child(path, None)
 
@@ -689,7 +699,7 @@ class IterationTree(ABC):
         """
         Insert a parent to the node at the given path, parent which is
         necessarily a transform node, as it will only have a single child. The
-        parent is built using the `Parent` class, and the supplied arguments.
+        parent is built using the ``Parent`` class, and the supplied arguments.
 
         The newly created tree is returned.
         """
@@ -712,10 +722,11 @@ class IterationTree(ABC):
     ) -> IterationTree:
         """
         Replace the node at the given path with another one. The other node is
-        built using its type, `Node`, and the `args` and `kwargs` arguments.
-        Note that the sub-tree of the replaced node is not modified.
+        built using its type, ``Node``, and the ``args`` and ``kwargs``
+        arguments. Note that the sub-tree of the replaced node is not
+        modified.
 
-        This requires `Node` to be of the same kind of the node that is being
+        This requires ``Node`` to be of the same kind of the node that is being
         replaced: a transform for a transform, an iteration method for an
         iteration method, a leaf for a leaf.
         """
@@ -732,8 +743,8 @@ class IterationTree(ABC):
         self, modifier: Callable[[IterationTree, ChildPath], IterationTree]
     ) -> IterationTree:
         """
-        Using a post-fix depth-first search, replace each `node` of the tree,
-        located at `path`, with `modifier(node, path)`.
+        Using a post-fix depth-first search, replace each ``node`` of the tree,
+        located at ``path``, with ``modifier(node, path)``.
         """
         return self._depth_first_modify(modifier, [])
 
@@ -744,11 +755,11 @@ class IterationTree(ABC):
         path: ChildPath,
     ) -> IterationTree:
         """
-        Recursive implementation of `depth_first_modify`, implemented by the
-        different node types.
+        Recursive implementation of :py:meth:`depth_first_modify`, implemented
+        by the different node types.
 
-        In order to prevent side-effects, `modifier` should not return its input
-        objects. It should rather returns modified copies.
+        In order to prevent side-effects, ``modifier`` should not modify its
+        input objects. It should rather returns modified copies.
         """
         raise NotImplementedError()
 

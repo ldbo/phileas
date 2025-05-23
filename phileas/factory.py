@@ -1,3 +1,7 @@
+"""
+Defines :py:class:`ExperimentFactory` and :py:class:`Loader` related classes.
+"""
+
 from __future__ import annotations
 
 import inspect

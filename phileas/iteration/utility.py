@@ -126,8 +126,9 @@ def recursive_union(tree1: DataTree, tree2: DataTree) -> DataTree:
 def is_transformed_iteration_leaf(tree: IterationTree) -> bool:
     """
     A transformed iteration leaf is an iteration tree that only contained
-    `Transform` and `IterationLeaf` nodes. That is, it does not contain
-    `IterationMethod`s.
+    :py:class:`~phileas.iteration.Transform`
+    and :py:class:`~phileas.iteration.IterationLeaf` nodes. That is, it does
+    not contain :py:class:`~phileas.iteration.IterationMethod` nodes.
 
     This function checks if a tree is a transformed iteration leaf.
     """
@@ -147,13 +148,16 @@ def flatten_datatree(
     tree: DataTree | PseudoDataTree, key_prefix: None | str = None, separator: str = "."
 ) -> dict[str, DataLiteral | IterationLeaf] | DataLiteral | IterationLeaf:
     """
-    Transform nested `dict`s and `list`s to a single-level dict. `DataLiteral`s
-    and `IterationLeaf`s are left unchanged, so that flatting a `DataTree`
-    returns a `DataTree`, and flattening a `PseudoDataTree` returns a
-    `PseudoDataTree`.
+    Transform nested ``dict`` and ``list`` objects to a single-level ``dict``.
+    :py:attr:`~phileas.iteration.base.DataLiteral`s
+    and :py:attr:`~phileas.iteration.base.IterationLeaf`s are left unchanged,
+    so that flattening a :py:attr:`~phileas.iteration.base.DataTree` returns a
+    :py:attr:`~phileas.iteration.base.DataTree`, and flattening a
+    :py:attr:`~phileas.iteration.base.PseudoDataTree` returns
+    a :py:attr:`~phileas.iteration.base.PseudoDataTree`.
 
-    Keys are converted to `str`, and concatenated using the specified
-    `separator`. `list`s are considered as `int`-keyed `dict`s.
+    Keys are converted to ``str``, and concatenated using the specified
+    ``separator``. ``list`` objects are considered as ``int``-keyed ``dict``.
 
     >>> tree = {
     ...     "key1": {
@@ -192,9 +196,9 @@ def iteration_tree_to_xarray_parameters(
     tree: IterationTree,
 ) -> tuple[dict[str, list | DataLiteral], list[str], list[int]]:
     """
-    Generate the arguments required to build an `xr.DataArray` or
-    `xr.DataFrame`. You can then modify them, if needed, and build the `xarray`
-    used to store the results of your experiment.
+    Generate the arguments required to build an :py:class:`xarray.DataArray` or
+    :py:class:`xarray.DataFrame`. You can then modify them, if needed, and build
+    the xarray container used to store the results of your experiment.
 
     >>> import numpy as np
     >>> import xarray as xr
@@ -235,7 +239,7 @@ def iteration_tree_to_xarray_parameters(
 
 def iteration_tree_to_multiindex(tree: IterationTree) -> "pandas.MultiIndex":
     """
-    Create a {py:class}`pandas.MultiIndex` that holds the values stored in an
+    Create a :py:class:`pandas.MultiIndex` that holds the values stored in an
     iteration tree. This method iterates over the whole tree in order to create
     the index. Thus, it requires the iterated trees to have all the same shape.
     """
