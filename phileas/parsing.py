@@ -1,7 +1,8 @@
 """
-This module allows to parse configuration files (usually using the YAML format)
-to data and iteration trees, as defined in the `iteration` module. In
-particular, it defines the supported custom YAML types.
+This module allows to parse configuration files, which use a modified YAML
+syntax, to data and iteration trees, as defined in the
+:py:mod:`~phileas.iteration` module. In particular, it defines the
+supported custom YAML types.
 """
 
 from __future__ import annotations
@@ -21,9 +22,9 @@ from phileas import iteration
 from phileas.iteration import Key, NumpyRNG
 
 # Warning: using the safe loader disables calling __post_init__ in dataclasses,
-# which effectively skips data verification in some custom YAML types. Using the
-# round-trip loader (ie. not specifying `typ`) solve this issue, but changes the
-# signature of `construct_mapping`.
+# which effectively skips data verification in some custom YAML types. Using
+# the round-trip loader (ie. not specifying ``typ``) solve this issue, but
+# changes the signature of ``construct_mapping``.
 _data_tree_parser = YAML(typ="safe")
 _iteration_tree_parser = YAML(typ="safe")
 
@@ -60,21 +61,21 @@ class YamlCustomType(ABC):
 class Configurations(YamlCustomType):
     """
     Configurations container. It holds a dictionary of configurations, and has
-    three optional arguments: `_default`, `_move_up` and `_insert_name`.
+    three optional arguments: ``_default``, ``_move_up`` and ``_insert_name``.
 
-    `_default` specifies the name of the default configuration.
+    ``_default`` specifies the name of the default configuration.
 
-    `_move_up` is a boolean defaulting to `False`. If it is set, the content of
-    the chosen configuration will be moved one level up.
+    ``_move_up`` is a boolean defaulting to ``False``. If it is set, the content
+    of the chosen configuration will be moved one level up.
 
-    `_insert_name` is a boolean defaulting to `False`. If it is set, the name of
-    the chosen configuration will be inserted in the final `DataTree`. If
-    `move_up`, then it is assigned to the key that previously hold the
-    `!configurations` node. Otherwise, it is inserted under the name
-    `"_configuration"`.
+    ``_insert_name`` is a boolean defaulting to ``False``. If it is set, the
+    name of the chosen configuration will be inserted in the final
+    :py:attr`~phileas.iteration.base.DataTree``. If ``move_up``, then it
+    is assigned to the key that previously hold the ``!configurations`` node.
+    Otherwise, it is inserted under the name ``"_configuration"``.
 
-    See `iteration.Configurations` for more details on the impact of `_move_up`
-    and `_insert_name`.
+    See :py:class:`~phileas.iteration.Configurations` for more details on the
+    impact of ``_move_up`` and ``_insert_name``.
     """
 
     yaml_tag: ClassVar[str] = "!configurations"
@@ -118,7 +119,7 @@ class Configurations(YamlCustomType):
 class CartesianProduct(YamlCustomType):
     """
     Cartesian product node, see
-    {py:class}`~phileas.iteration.CartesianProduct` for the supported
+    :py:class:`~phileas.iteration.CartesianProduct` for the supported
     arguments.
     """
 
@@ -171,7 +172,7 @@ class CartesianProduct(YamlCustomType):
 @dataclass
 class Union(YamlCustomType):
     """
-    Union node, see {py:class}`~phileas.iteration.Union` for the supported
+    Union node, see :py:class:`~phileas.iteration.Union` for the supported
     arguments.
     """
 
@@ -238,7 +239,7 @@ class Union(YamlCustomType):
 class Shuffle(YamlCustomType):
     """
     Shuffle node, whose iteration returns a permutation of its only child. It
-    has a single `child` field.
+    has a single ``child`` field.
     """
 
     yaml_tag: ClassVar[str] = "!shuffle"
@@ -269,7 +270,7 @@ class Shuffle(YamlCustomType):
 class Pick(YamlCustomType):
     """
     Pick node, whose iteration alternatively returns a single of its children.
-    It contains a named mapping, with a `_default_child` field, containing
+    It contains a named mapping, with a ``_default_child`` field, containing
     the key of its default child.
     """
 
@@ -310,22 +311,24 @@ class Range(YamlCustomType, Generic[RT]):
     """
     Range of numbers, that can optionally (but usually will) specify an
     iteration method. It can be converted to an iteration leaf using
-    `to_iteration_tree`.
+    :py:meth:`to_iteration_tree`.
 
-    The `start` and `end` attributes are mandatory, and `default` can be
+    The ``start`` and ``end`` attributes are mandatory, and ``default`` can be
     optionally specified.
 
-    `steps` or `resolution` (but not both) can be specified. If they are, and
-    `progression` is not, or equals `"linear"`, the range will represent
-      - an `iteration.IntegerRange` if `start` and `end` are integers and
-        `resolution` is used and is an integer;
-      - an `iteration.LinearRange` otherwise.
+    ``steps`` or ``resolution`` (but not both) can be specified. If they are,
+    and ``progression`` is not, or equals ``"linear"``, the range will
+    represent
 
-    If `progression` is `geometric`, the `Range` will represent an
-    `iteration.GeometricRange`.
+    - an :py:class:`~phileas.iteration.IntegerRange` if ``start`` and ``end``
+      are integers and ``resolution`` is used and is an integer;
+    - an :py:class:`~phileas.iteration.LinearRange` otherwise.
 
-    If neither `steps` nor `resolution` is specified, the range will represent
-    an `iteration.NumericRange`.
+    If ``progression`` is ``geometric``, the :py:class:`Range` will represent an
+    :py:class:`~phileas.iteration.GeometricRange`.
+
+    If neither ``steps`` nor ``resolution`` is specified, the range will
+    represent an :py:class:`~phileas.iteration.NumericRange`.
     """
 
     yaml_tag: ClassVar[str] = "!range"

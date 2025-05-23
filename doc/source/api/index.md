@@ -18,4 +18,5 @@ Function, classes and attributes documentations:
 
 factory
 iteration
+parsing
 :::
