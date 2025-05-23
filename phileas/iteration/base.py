@@ -369,7 +369,7 @@ no_default = _NoDefault()
 ### Iteration tree API ###
 
 if typing.TYPE_CHECKING:
-    from .node import Transform
+    from .node import UnaryNode
 
 
 class InfiniteLength(BaseException):
@@ -667,8 +667,8 @@ class IterationTree(ABC):
         """
         return self.insert_child(path, None)
 
-    def insert_transform(
-        self, path: ChildPath, Parent: type[Transform], *args, **kwargs
+    def insert_unary(
+        self, path: ChildPath, Parent: type[UnaryNode], *args, **kwargs
     ) -> IterationTree:
         """
         Insert a parent to the node at the given path, parent which is
@@ -677,16 +677,16 @@ class IterationTree(ABC):
 
         The newly created tree is returned.
         """
-        from .node import Transform
+        from .node import UnaryNode
 
-        if not issubclass(Parent, Transform):
-            raise TypeError("Cannot insert a non-transform node as a parent.")
+        if not issubclass(Parent, UnaryNode):
+            raise TypeError("Cannot insert a non-unary node as a parent.")
 
         if len(path) == 0:
             return Parent(self, *args, **kwargs)
 
         key = path[0]
-        new_child = self._get(key).insert_transform(path[1:], Parent, *args, **kwargs)
+        new_child = self._get(key).insert_unary(path[1:], Parent, *args, **kwargs)
         new_me = self._insert_child(key, new_child)
 
         return new_me

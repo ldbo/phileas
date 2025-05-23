@@ -637,9 +637,7 @@ class TestIteration(unittest.TestCase):
         hypothesis.note("Non lazy list: \n" + "\n".join(map(str, non_lazy_list)))
 
         acc_lazy_list = list(
-            tree.replace_node([], type(tree), lazy=True).insert_transform(
-                [], Accumulator
-            )
+            tree.replace_node([], type(tree), lazy=True).insert_unary([], Accumulator)
         )
         hypothesis.note(
             "Accumulated lazy list: \n" + "\n".join(map(str, acc_lazy_list))
