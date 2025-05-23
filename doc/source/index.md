@@ -63,6 +63,18 @@ Dive deeper into the different features
 
 Browse the Python API documentation
 :::::
+
+:::::{grid-item-card} {octicon}`repo` Developer notes
+:text-align: center
+
+:::{button-ref} developer_notes/index
+:click-parent:
+:outline:
+:color: primary
+:expand:
+
+Find out how to extend the library
+:::::
 ::::::::::::
 
 :::{toctree}
@@ -73,4 +85,5 @@ getting_started/index
 examples/index
 user_guide/index
 api/index
+developer_notes/index
 :::
