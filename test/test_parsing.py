@@ -71,6 +71,30 @@ default: 12
             iteration.Sequence([1, 2, 3]),
         )
 
+    def test_union(self):
+        content = """
+!union
+    _preset: first
+    _common_preset: true
+    _reset: null
+    a: !sequence [1, 2, 3]
+    b: !sequence [a, b, c]
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = iteration.Union(
+            children={
+                "a": iteration.Sequence(elements=[1, 2, 3]),
+                "b": iteration.Sequence(elements=["a", "b", "c"]),
+            },
+            order=None,
+            lazy=False,
+            preset="first",
+            common_preset=True,
+            reset=None,
+        )
+
+        self.assertEqual(tree, expected_tree)
+
     def test_configurations(self):
         content = """
 c: !configurations

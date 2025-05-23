@@ -115,6 +115,72 @@ class Configurations(YamlCustomType):
 
 @_iteration_tree_parser.register_class
 @dataclass
+class Union(YamlCustomType):
+    """
+    Union node, see {py:class}`~phileas.iteration.Union` for the supported
+    arguments.
+    """
+
+    yaml_tag: ClassVar[str] = "!union"
+    children: dict[Key, Any] | list
+    order: list[Key] | None
+    lazy: bool
+    preset: Literal["first"] | Literal["default"] | None
+    common_preset: bool
+    reset: Literal["first"] | Literal["last"] | Literal["default"] | None
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Union:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            order = mapping.pop("_order", None)
+            lazy = mapping.pop("_lazy", False)
+            preset = mapping.pop("_preset", "first")
+            common_preset = mapping.pop("_common_preset", False)
+            reset = mapping.pop("_reset", "first")
+            return Union(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                preset=preset,
+                common_preset=common_preset,
+                reset=reset,
+            )
+        else:
+            children = constructor.construct_sequence(node, deep=True)
+            return Union(
+                children,
+                order=None,
+                lazy=False,
+                preset="first",
+                common_preset=False,
+                reset="first",
+            )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
+        if isinstance(self.children, list):
+            children = [
+                raw_yaml_structure_to_iteration_tree(child) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            children = {
+                name: raw_yaml_structure_to_iteration_tree(child)
+                for name, child in self.children.items()
+            }
+        return iteration.Union(
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            preset=self.preset,
+            common_preset=self.common_preset,
+            reset=self.reset,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
 class Shuffle(YamlCustomType):
     """
     Shuffle node, whose iteration returns a permutation of its only child. It
