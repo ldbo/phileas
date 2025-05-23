@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import inspect
-from logging import Logger
 import operator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import reduce
 from itertools import chain
+from logging import Logger
 from pathlib import Path
 from types import NoneType
 from typing import Any, Callable, ClassVar, cast
@@ -24,17 +24,17 @@ class Loader(ABC):
     """
     Class used to initiate a connection to an instrument, and then configure it.
     In order to add the support for a new instrument, you should subclass it
-    and register it in an `ExperimentFactory`.
+    and register it in an :py:class:`ExperimentFactory`.
     """
 
     #: Name of the loader, which is usually the name of the loaded instrument.
-    #: It is to be matched with the bench configuration `loader` field.
+    #: It is to be matched with the bench configuration ``loader`` field.
     name: ClassVar[str]
 
     #: Interfaces the loaded instrument supports. Interfaces are arbitrary names
     #: referred to in the experiment configuration file, allowing to choose
     #: which bench instrument is used for which experiment instrument, depending
-    #: on its `interface` field.
+    #: on its ``interface`` field.
     interfaces: ClassVar[set[str]]
 
     #: Reference to the instrument factory which has instantiated the loader.
@@ -73,6 +73,11 @@ class Loader(ABC):
 
     @classmethod
     def get_markdown_documentation(cls) -> str:
+        """
+        Generate a markdown documentation of the loader, which is based on the
+        docstrings of the :py:meth:`initiate_connection` and
+        :py:meth:`configure` methods.
+        """
         doc = f"# {cls.__name__}\n"
         doc += f" - Name: `{cls.name}`\n"
 
@@ -174,7 +179,8 @@ def _add_loader(
 
 
 #: Default loaders that every instrument factory has on init. It is made to be
-#: modified by `register_default_loader` and `clear_default_loaders` only.
+#: modified by :py:func:`register_default_loader` and
+#: :py:func:`clear_default_loaders` only.
 _DEFAULT_LOADERS: dict[str, type[Loader]] = {}
 
 
@@ -198,8 +204,9 @@ def register_default_loader(
     ]
 ):
     """
-    Register a loader to be added on init by every new `ExperimentFactory`. See
-    `_add_loader` for the specifications of the arguments.
+    Register a loader to be added on init by every
+    new :py:class:`ExperimentFactory`. See :py:func:`_add_loader` for the
+    specifications of the arguments.
 
     This function can either be used directly, or as a class decorator.
     """
@@ -237,18 +244,18 @@ class BenchInstrument:
     name: str
 
     #: Own loader of the instrument, which is not shared with any other
-    #: instrument
+    #: instrument.
     loader: Loader
 
     #: Bench configuration of the instrument, stripped of the reserved keywords
-    #: entries
+    #: entries.
     configuration: dict[Key, DataTree]
 
-    #: None before initialization
+    #: None before initialization.
     instrument: Any | None = None
 
     def initiate_connection(self):
-        self.loader.logger.info(f"Initiating connection.")
+        self.loader.logger.info("Initiating connection.")
         self.instrument = self.loader.initiate_connection(self.configuration)
 
 
@@ -269,7 +276,7 @@ class ExperimentInstrument:
 class Filter(ABC):
     """
     Class used to store an expression tree representing the filtering
-    expressions stored in the `filter` entry of the experiment configuration.
+    expressions stored in the ``filter`` entry of the experiment configuration.
     """
 
     @abstractmethod
@@ -282,13 +289,12 @@ class Filter(ABC):
     @staticmethod
     def build_filter(filter_entry: dict[str, Any] | list[dict]) -> "Filter":
         """
-        Filter parser, which is given the `filter` entry of the experiment
+        Filter parser, which is given the ``filter`` entry of the experiment
         configuration file, and returns the corresponding expression tree.
 
-        # TBD
-
-        Only parsing single-level dict is supported for now. Parsing nested
-        filters should be implemented.
+        Todo:
+            Only parsing single-level dict is supported for now. Parsing
+            nested filters should be implemented.
         """
         if isinstance(filter_entry, dict):
             filters: list[Filter] = [
@@ -363,7 +369,12 @@ class ExperimentFactory:
      - initiate the connection to the instruments, and configure them.
     """
 
+    #: If the bench configuration is supplied by file, stores its path.
+    #: Otherwise, stores ``None``.
     bench_file: Path | None
+
+    #: If the experiment configuration is supplied by file, stores its path.
+    #: Otherwise, stores ``None``.
     experiment_file: Path | None
 
     #: Bench configuration stripped of the reserved keyword entries.
@@ -378,11 +389,12 @@ class ExperimentFactory:
     #: The supported loader classes, stored with their name.
     loaders: dict[str, type[Loader]]
 
-    #: Bench instruments, created by __preinit_bench_instruments.
+    #: Bench instruments, created by :py:meth:`__preinit_bench_instruments`.
     __bench_instruments: dict[str, BenchInstrument]
-    #: Experiment instrument, created by __preconfigure_experiment_instruments.
+    #: Experiment instrument, created
+    #: by :py:meth:`__preconfigure_experiment_instruments`.
     __experiment_instruments: dict[str, ExperimentInstrument]
-    #: Experiment connections, created by __build_connection_graph.
+    #: Experiment connections, created by :py:meth:`__build_connection_graph`.
     __connections: list[Connection]
 
     ### Instruments initialization ###
@@ -541,7 +553,7 @@ class ExperimentFactory:
         Find a bench instrument matching and interface and a filter.
 
         Raises:
-         - KeyError if there are 0 or more than 1 matching instruments.
+            KeyError: if there are 0 or more than 1 matching instruments.
         """
         compatible_instruments = []
         for instrument in self.__bench_instruments.values():
@@ -572,11 +584,11 @@ class ExperimentFactory:
     def __build_connection_graph(self, p_experiment_config: dict | None):
         """
         Extract the connection graph from the experiment configuration, removing
-        `connections` entries from it.
+        ``connections`` entries from it.
         """
-        connections: list[
-            tuple[str, list[str], str, list[str], str]
-        ] = self.__parse_global_connections(p_experiment_config)
+        connections: list[tuple[str, list[str], str, list[str], str]] = (
+            self.__parse_global_connections(p_experiment_config)
+        )
 
         if isinstance(p_experiment_config, dict):
             for name, config in p_experiment_config.items():
@@ -704,8 +716,9 @@ class ExperimentFactory:
     def get_bench_instrument(self, name: str) -> Any:
         """
         Return the bench instrument whose name is specified, using its loader
-        `initiate_connection` method to create it. If the connection to the
-        instrument has already been initiated, the instrument is simply returned.
+        :py:meth:`~Loader.initiate_connection` method to create it. If the
+        connection to the instrument has already been initiated, the instrument
+        is simply returned.
 
         This is the only way a bench instrument should be retrieved.
         """
@@ -723,8 +736,8 @@ class ExperimentFactory:
     def configure_instrument(self, name: str, configuration: dict | None = None):
         """
         Configure an experiment instrument using the given configuration, and
-        the `configure` method of its loader. If no configuration is given, use
-        the instrument default configuration from the experiment
+        the :py:meth:`~Loader.configure` method of its loader. If no configuration is
+        given, use the instrument default configuration from the experiment
         configuration.
         """
         if configuration is None:
@@ -745,10 +758,11 @@ class ExperimentFactory:
 
     def configure_experiment(self, configuration: dict | None = None):
         """
-        Configure multiple instruments at once, using the `configure` method of
-        their respective loaders, and the entry of `configuration` matching
-        their name. If `configuration` misses the entry of an instrument, the
-        instrument won't be configured.
+        Configure multiple instruments at once, using
+        the :py:meth:`~Loader.configure` method of their respective loaders,
+        and the entry of ``configuration`` matching their name. If
+        ``configuration`` misses the entry of an instrument, the instrument won't
+        be configured.
 
         If no configuration is given, the default experiment configuration is
         used to configure the instruments. In this case, all the instruments are
@@ -788,8 +802,8 @@ class ExperimentFactory:
         ),
     ):
         """
-        Register a new loader for this factory. See `_add_loader` for the
-        specifications of the arguments.
+        Register a new loader for this factory. See :py:func:`_add_loader` for
+        the specifications of the arguments.
         """
         _add_loader(self.loaders, loader)
 

@@ -50,6 +50,19 @@ Installation instructions
 
 Dive deeper into the different features
 :::::
+
+:::::{grid-item-card} {octicon}`code` API documentation
+:text-align: center
+
+
+:::{button-ref} api/index
+:click-parent:
+:outline:
+:color: primary
+:expand:
+
+Browse the Python API documentation
+:::::
 ::::::::::::
 
 :::{toctree}
@@ -59,4 +72,5 @@ Dive deeper into the different features
 getting_started/index
 examples/index
 user_guide/index
+api/index
 :::

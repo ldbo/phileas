@@ -21,11 +21,13 @@ release = phileas.__version__
 extensions = [
     "myst_nb",
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.coverage",
     "sphinx.ext.duration",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
+    "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx_copybutton",
     "sphinx_design",
@@ -48,6 +50,9 @@ autodoc_type_aliases = {
 }
 autodoc_member_order = "bysource"
 
+## Autosummary
+autosummary_generate = True
+
 ## Coverage
 coverage_modules = ["phileas"]
 coverage_statistics_to_stdout = True
@@ -57,6 +62,9 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 ## Napoleon
 napoleon_google_docstring = True
+
+## Todo
+todo_include_todos = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
