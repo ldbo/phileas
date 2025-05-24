@@ -5,9 +5,11 @@ Defines :py:class:`ExperimentFactory` and :py:class:`Loader` related classes.
 from __future__ import annotations
 
 import inspect
+import io
 import operator
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import asdict, dataclass
 from functools import reduce
 from itertools import chain
 from logging import Logger
@@ -15,7 +17,9 @@ from pathlib import Path
 from types import NoneType
 from typing import Any, Callable, ClassVar, cast
 
+import dacite
 import graphviz  # type: ignore[import]
+from ruamel.yaml import YAML
 
 from . import parsing
 from .iteration import DataTree, IterationTree, Key
@@ -72,6 +76,76 @@ class Loader(ABC):
         Configure an instrument - whose connection has already been initiated -
         using its experiment configuration. The instrument should be modified,
         and is not returned.
+        """
+        raise NotImplementedError()
+
+    def get_effective_configuration(
+        self, instrument: Any, configuration: None | dict[str, DataTree] = None
+    ) -> dict[str, DataTree]:
+        """
+        Returns the effective configuration of an instrument. The purpose of
+        this method is to be called after :py:meth:`configure`, in order to
+        verify that the required parameters have been properly applied. It
+        might be useful in different situations, for example:
+
+        - the instrument might have a parameter with which the driver uses a
+          best effort approach. If the user requests an unsupported value, it
+          automatically chooses a supported value. For example, the only
+          integer values might be supported, and the driver rounds the
+          user-supplied parameter.
+        - Setting a parameter might not be deterministic. For example, the
+          effective position of a piezoelectric actuator differs from its
+          target.
+        - The user manually configures an instrument, and wants to get its
+          configuration back. In this case, :py:meth:`dump_state` might also be
+          interesting.
+
+        If ``configuration`` is not supplied, the entire configuration of the
+        instrument is returned. It should have the same structure as the
+        argument of :py:meth:`configure`.
+
+        Otherwise, if ``configuration`` is supplied, its values are replaced
+        with the effective parameter values. This is typically used to verify
+        the value of a configuration that has just been applied
+        with :py:meth:`configure`. Note that, in this case, ``configuration``
+        might be modified, and it is likely that ``get_effective_configuration
+        (instrument, configuration) is configuration``.
+
+        It is not necessary to implement this method.
+        """
+        raise NotImplementedError()
+
+    def get_id(self, instrument: Any) -> str:
+        """
+        Returns a unique identifier of an instrument. Two physically different
+        instruments are expected to have different identifiers.
+        """
+        raise NotImplementedError()
+
+    def dump_state(self, instrument: Any) -> DataTree:
+        """
+        Dump the state of an instrument. It should, as much as possible,
+        represent the exact state of the instrument. It should contain the
+        value of parameters that can be configured with :py:meth:`configure`,
+        but also other ones. These might include, among others, calibration
+        values, the exact mode which is used, firmware and driver
+        versions, *etc*.
+
+        The purpose of this state is to enable comparing similar instruments, to
+        find out if they can be swapped or how to make them interchangeable.
+
+        It is not necessary to implement this method. However, when it is
+        implemented, together with :py:meth:`restore_state`, it allows to
+        guarantee that the instrument always starts in the same state. It can
+        also be used to capture a manual configuration, in order to replicate
+        it later.
+        """
+        raise NotImplementedError()
+
+    def restore_state(self, instrument: Any, state: DataTree):
+        """
+        Put the instrument in a previously recorded state.
+        See :py:meth:`dump_state`.
         """
         raise NotImplementedError()
 
@@ -272,6 +346,90 @@ class ExperimentInstrument:
     #: Experiment configuration of the instrument, stripped of the reserved
     #: keywords entries
     configuration: dict[str, Any]
+
+
+### Bench state structures ###
+
+
+@dataclass
+class InstrumentState:
+    """
+    Serializable state of a :py:class:`BenchInstrument`.
+    """
+
+    #: Name of its loader.
+    loader: str
+
+    #: Supported interfaces of the loader.
+    interfaces: list[str]
+
+    #: Configuration applied to the instrument.
+    configuration: DataTree
+
+    #: Identifier of the instrument, see :py:meth:`Loader.get_id`.
+    id: str | None
+
+    #: State of the instrument, see :py:meth:`Loader.dump_state`.
+    state: DataTree
+
+
+#: Parser used to load stored states.
+_yaml_load_parser = YAML(typ="safe")
+
+#: Parser used to dump states. It is not ``typ="safe"`` in order to preserve the
+#: order of mappings.
+_yaml_dump_parser = YAML()
+
+
+@dataclass
+class BenchState:
+    """
+    Serializable state of a whole bench.
+    """
+
+    #: Version of Phileas.
+    version: str
+
+    #: Instruments of the bench.
+    instruments: dict[str, InstrumentState]
+
+    def to_yaml(self, destination: Path | None = None) -> str | None:
+        """
+        Serialize a bench state to YAML. If you supply a path in
+        ``destination``, directly write the state to the file located there.
+        Otherwise, return a string.
+        """
+        raw = asdict(self)
+        ordered = {}
+        ordered["version"] = raw["version"]
+        ordered["instruments"] = raw["instruments"]
+
+        if destination is None:
+            buffer = io.StringIO()
+            _yaml_dump_parser.dump(ordered, buffer)
+            return buffer.getvalue()
+        else:
+            with open(destination, "x") as f:
+                _yaml_dump_parser.dump(ordered, f)
+
+            return None
+
+    @classmethod
+    def from_yaml(cls, source: str | Path) -> BenchState:
+        """
+        Deserialize a bench state from YAML. If you supply a path in ``source``,
+        read the state from the file located there. Otherwise, read the
+        string.
+        """
+        raw: Any
+        if isinstance(source, str):
+            raw = _yaml_load_parser.load(source)
+        else:
+            with open(source) as f:
+                raw = _yaml_load_parser.load(f)
+
+        config = dacite.Config(forward_references={"_NoDefault": None})
+        return dacite.from_dict(data_class=BenchState, data=raw, config=config)
 
 
 ### Filters ###
@@ -792,6 +950,206 @@ class ExperimentFactory:
                     raise TypeError(msg)
 
                 self.configure_instrument(name, config)
+
+    def get_effective_instrument_configuration(
+        self, name: str, configuration: dict | None = None
+    ) -> dict[str, DataTree]:
+        """
+        Return the effective configuration of an instrument.
+        See :py:meth:`Loader.get_effective_configuration`.
+        """
+        experiment_instrument = self.__experiment_instruments[name]
+        instrument = experiment_instrument.bench_instrument.instrument
+        loader = experiment_instrument.bench_instrument.loader
+        return loader.get_effective_configuration(instrument, configuration)
+
+    def get_effective_experiment_configuration(
+        self, configuration: dict | None = None
+    ) -> dict[str, dict[str, DataTree]]:
+        """
+        Return the effective configuration of the whole bench. If
+        ``configuration`` is not supplied, get the configuration of each
+        instrument of the bench. Otherwise, only retrieves the configuration of
+        instrument which have an entry. The value of the entry is passed to
+        :py:meth:`Loader.get_effective_configuration`. If the entry does not
+         correspond to an instrument, or its loader does not
+         implement :py:meth:`~Loader.get_effective_configuration`, it is
+         ignored.
+        """
+        if configuration is None:
+            configuration = dict.fromkeys(self.__experiment_instruments, None)
+
+        effective_configuration = {}
+        for name in configuration.keys():
+            if name not in self.__experiment_instruments:
+                continue
+
+            experiment_instrument = self.__experiment_instruments[name]
+            instrument = experiment_instrument.bench_instrument.instrument
+            loader = experiment_instrument.bench_instrument.loader
+            try:
+                effective_configuration[name] = loader.get_effective_configuration(
+                    instrument, configuration[name]
+                )
+            except NotImplementedError:
+                logger.warning(
+                    f"Loader {loader.name} used by bench instrument {name} does "
+                    "not implement get_effective_configuration."
+                )
+
+        return effective_configuration
+
+    ### Using the complete state of a bench ###
+
+    def dump_bench_state(self, full: bool = True) -> BenchState:
+        """
+        Dumps the state of the whole bench.
+
+        When not ``full``, do not dump the state of the instruments. However,
+        retrieve its loader and ID information.
+        """
+        instruments: dict[str, InstrumentState] = {}
+        for bench_instrument in self.__bench_instruments.values():
+            driver = self.get_bench_instrument(bench_instrument.name)
+            loader = bench_instrument.loader
+
+            instrument_state = None
+            if full:
+                try:
+                    instrument_state = bench_instrument.loader.dump_state(driver)
+                except NotImplementedError:
+                    logger.warning(
+                        f"Loader {loader.name} used by bench instrument "
+                        f"{bench_instrument.name} does not implement dump_state."
+                    )
+
+            instrument_id = None
+            try:
+                instrument_id = bench_instrument.loader.get_id(driver)
+            except NotImplementedError:
+                logger.warning(
+                    f"Loader {loader.name} used by bench instrument "
+                    f"{bench_instrument.name} does not implement get_id."
+                )
+
+            instrument_entry = InstrumentState(
+                loader=loader.name,
+                interfaces=sorted(loader.interfaces),
+                configuration=deepcopy(bench_instrument.configuration),
+                id=instrument_id,
+                state=deepcopy(instrument_state),
+            )
+            instruments[bench_instrument.name] = instrument_entry
+
+        import phileas
+
+        return BenchState(version=phileas.__version__, instruments=instruments)
+
+    def restore_bench_state(self, state: BenchState, strict: bool = True):
+        """
+        Restores the a bench state. If ``strict``, requires the following
+        serialized values to match with their bench values:
+
+        - :py:attr:`BenchState.version`,
+        - the list of the instruments names,
+        - :py:attr:`InstrumentState.loader`,
+        - :py:attr:`InstrumentState.interfaces`,
+        - :py:attr:`InstrumentState.configuration`,
+        - :py:attr:`InstrumentState.id`.
+
+        Additionally, every loader is required to
+        implement :py:meth:`Loader.restore_state`.
+
+        Otherwise, if ``not strict``, the state of all the instruments with
+        matching names and :py:attr:`InstrumentState.loader` is restored.
+        Others are ignored.
+
+        Raises:
+            ValueError: if the state cannot be restored due to stored state
+                        incompatibilities.
+        """
+        import phileas
+
+        # Check version
+        if state.version != phileas.__version__:
+            if strict:
+                raise ValueError(
+                    "Cannot restore a bench state created with Phileas version"
+                    f"{state.version}. Current version is {phileas.__version__}"
+                )
+            logger.warning(
+                "Restoring a bench state created with Phileas version "
+                f"{state.version}. Current version is {phileas.__version__}."
+            )
+
+        # Check instruments list
+        state_instruments = set(state.instruments.keys())
+        self.__check_instruments_list(state_instruments, strict)
+
+        # Check instruments loaders, ID, interfaces and configuration
+        for bi in self.__bench_instruments.values():
+            if bi.name not in state_instruments:
+                continue
+
+            self.__check_instrument_validity(state.instruments[bi.name], bi, strict)
+
+        # Restore states
+        for bi in self.__bench_instruments.values():
+            if bi.name not in state_instruments:
+                continue
+
+            try:
+                bi.loader.restore_state(bi.instrument, state.instruments[bi.name].state)
+            except NotImplementedError as err:
+                msg = (
+                    f"Loader {bi.loader.name} used by bench instrument {bi.name} "
+                    "does not implement restore_state."
+                )
+                if strict:
+                    msg += " The state is partially restored."
+                    raise NotImplementedError(msg) from err
+                logger.warning(msg)
+
+    def __check_instruments_list(self, state_instruments: set[str], strict: bool):
+        own_instruments = set(self.__bench_instruments.keys())
+        if own_instruments != state_instruments:
+            logger.warning("The bench state has different instruments.")
+
+        if not own_instruments.issubset(state_instruments):
+            instruments = own_instruments - state_instruments
+            logger.warning(
+                f"These instruments are only in the current bench: {instruments}."
+            )
+
+        if not state_instruments.issubset(own_instruments):
+            instruments = state_instruments - own_instruments
+            logger.warning(
+                f"These instruments are only in the dumped bench state: {instruments}."
+            )
+
+        if own_instruments != state_instruments and strict:
+            raise ValueError("Cannot restore a bench state with different instruments.")
+
+    @classmethod
+    def __check_instrument_validity(
+        cls, si: InstrumentState, bi: BenchInstrument, strict: bool
+    ):
+        def compare(name: str, state_value: Any, bench_value: Any, required: bool):
+            if state_value != bench_value:
+                msg = (
+                    f"State instrument {bi.name} has {name} {state_value}, but "
+                    f"in the current bench it has {name} {bench_value}."
+                )
+                if required or strict:
+                    raise ValueError(msg)
+                logger.warning(msg)
+
+        compare("loader", si.loader, bi.loader.name, required=True)
+        compare("interfaces", set(si.interfaces), bi.loader.interfaces, required=False)
+        compare("configuration", si.configuration, bi.configuration, required=False)
+        compare("id", si.id, bi.loader.get_id(bi.instrument), required=False)
+
+    ### Loaders ###
 
     def register_loader(
         self,
