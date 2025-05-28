@@ -53,7 +53,7 @@ To add a new dependency to the project, you must:
 ### Updating dependencies
 
 When you update dependencies, you should also update the pre-commit type checker
-`additinal_dependencies` accordingly.
+`additional_dependencies` accordingly.
 
 ## Type checking
 
