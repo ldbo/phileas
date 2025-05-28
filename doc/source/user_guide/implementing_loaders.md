@@ -186,16 +186,149 @@ checked, and then it is used. This is useful to add optional parameters.
 
 Note that this method does not return anything.
 
-A valid experiment configuration is
+A valid experiment configuration is for this loader is
 
 ```yaml
 oscilloscope:
     interface: oscilloscope
     amplitude: !range
-        start: 1
-        end: 5
-        resolution: 0.5
+        start: 0.1
+        end: 10
+        steps: 4
 ```
+
+## Getting the state of an instrument
+
+Actually, the {py:class}`~phileas.mock_instruments.Oscilloscope` does not
+support all amplitude values. In can only use powers of 10, and automatically
+rounds to the logarithmic closer supported value:
+
+```{code-cell} ipython3
+oscilloscope.amplitude = 8
+oscilloscope.amplitude
+```
+
+In that case, you can optionally the
+{py:meth}`~phileas.factory.Loader.get_effective_configuration` methods, which
+is the converse of {py:meth}`~phileas.factory.Loader.configure`, and enables
+the user to retrieve the actual configuration of the oscilloscope.
+
+```{eval-rst}
+
+.. automethod:: phileas.factory.Loader.get_effective_configuration
+```
+
+We could thus declare it as:
+
+```python
+def get_effective_configuration(
+        self, instrument: Oscilloscope, configuration: None | dict = None
+    ) -> dict:
+        dump_all = configuration is None
+        eff_conf = {}
+
+        if dump_all or "amplitude" in configuration:
+            eff_conf["amplitude"] = instrument.amplitude
+
+        return eff_conf
+```
+
+:::{seealso}
+
+You can retrieve the configuration of an instrument, or a whole bench, with the
+method
+{py:meth}`~phileas.factory.ExperimentFactory.get_effective_instrument_configuration`
+and
+{py:meth}`~phileas.factory.ExperimentFactory.get_effective_experiment_configuration`
+of {py:class}`~phileas.factory.ExperimentFactory`.
+:::
+
+The configuration of an instrument does not entirely define its state. Indeed,
+if someone were to swap two similar instruments on an experiment bench, their
+configuration would not change, although one might be not behave similarly as
+the other. For this reason, you can implement the
+{py:meth}`~phileas.factory.Loader.get_id` method:
+
+```{eval-rst}
+
+.. automethod:: phileas.factory.Loader.get_id
+```
+
+It enables an experiment factory to know the identity of each instrument on the
+bench. In our case, the oscilloscope driver has an
+{py:attr}`~phileas.mock_instruments.Oscilloscope.id` field, which is supposed
+to uniquely represent the driven oscilloscope. We can thus simply use the
+implementation:
+
+```python
+def get_id(self, instrument: Oscilloscope) -> str:
+    return instrument.id
+```
+
+:::{note}
+
+In the case of SCPI-driven instruments, you should return the output of the
+`*IDN?` command.
+:::
+
+Finally, the actual state of the same instrument might change in time. For
+example, the {py:attr}`~phileas.mock_instruments.Oscilloscope.fw_version` field
+might change, after updating the firmware of the oscilloscope. In this case,
+the oscilloscope might still expose the same configuration API, but could
+behave differently. Implementing {py:meth}`~phileas.Loader.dump_state` and
+{py:meth}`~phileas.Loader.restore_state` - both of which are optional - enables
+the experiment factory to find bench variations, or to replicate exactly the
+state of an experiment bench.
+
+```{eval-rst}
+
+.. automethod:: phileas.factory.Loader.dump_state
+
+.. automethod:: phileas.factory.Loader.restore_state
+```
+
+In our case, the full state of the oscilloscope contains its configurable
+amplitude, but also its bit width, firmware version, and the probe it uses:
+
+```python
+def dump_state(self, instrument: Oscilloscope) -> DataTree:
+    return {
+        "probe": f"{type(instrument.probe).__name__}",
+        "amplitude": instrument.amplitude,
+        "bit_width": instrument.width,
+        "fw_version": instrument.fw_version,
+    }
+```
+
+We restoring the state of the instrument, we are being careful not to damage it,
+and first check that the state is actually applicable. It is not possible to
+change the probe the oscilloscope is plugged to, and we don't consider this as
+required. Thus, we simply warn the user if he tries to do so:
+
+```python
+def restore_state(self, instrument: Oscilloscope, state: dict[str, Any]):
+    if instrument.fw_version != state["fw_version"]:
+        raise ValueError(
+            f"Dumped FW version {state['fw_version']} is not compatible with"
+            f" instrument FW version {instrument.fw_version}."
+        )
+
+    if instrument.width != state["bit_width"]:
+        raise ValueError(
+            f"Dumped bit width {state['bit_width']} is not compatible with "
+            f"instrument bit width {instrument.width}."
+        )
+    instrument.amplitude = state["amplitude"]
+
+    if type(instrument.probe).__name__ != state["probe"]:
+        self.logger.warning("Cannot change the oscilloscope probe after instrument initialization.")
+```
+
+:::{seealso}
+
+[](/user_guide/bench_state) covers more extensively how you can indirectly
+use these methods to effectively compare the state of different benches.
+:::
 
 ## Putting it all together
 
@@ -234,6 +367,45 @@ class OscilloscopeLoader(Loader):
             amplitude = configuration["amplitude"]
             instrument.amplitude = amplitude
             self.logger.info(f"Amplitude set to {amplitude}.")
+
+    def get_effective_configuration(
+            self, instrument: Oscilloscope, configuration: None | dict = None
+        ) -> dict:
+            dump_all = configuration is None
+            eff_conf = {}
+
+            if dump_all or "amplitude" in configuration:
+                eff_conf["amplitude"] = instrument.amplitude
+
+            return eff_conf
+
+    def get_id(self, instrument: Oscilloscope) -> str:
+        return instrument.id
+
+    def dump_state(self, instrument: Oscilloscope) -> DataTree:
+        return {
+            "probe": f"{type(instrument.probe).__name__}",
+            "amplitude": instrument.amplitude,
+            "bit_width": instrument.width,
+            "fw_version": instrument.fw_version,
+        }
+
+    def restore_state(self, instrument: Oscilloscope, state: dict[str, Any]):
+        if instrument.fw_version != state["fw_version"]:
+            raise ValueError(
+                f"Dumped FW version {state['fw_version']} is not compatible with"
+                f" instrument FW version {instrument.fw_version}."
+            )
+
+        if instrument.width != state["bit_width"]:
+            raise ValueError(
+                f"Dumped bit width {state['bit_width']} is not compatible with "
+                f"instrument bit width {instrument.width}."
+            )
+        instrument.amplitude = state["amplitude"]
+
+        if type(instrument.probe).__name__ != state["probe"]:
+            self.logger.warning("Cannot change the oscilloscope probe after instrument initialization.")
 ```
 
 However, for Phileas to know how to use it when requested by a bench
@@ -282,7 +454,7 @@ can be obtained from `python -m phileas list-loaders script.py`.
 
 :::{warning}
 
-`python -m phileas list-loaders script.py` executes the script.
+`python -m phileas list-loaders script.py` imports the script. Make sure to enclose all the side-effect operations in `if __name__ == "__main__":`.
 :::
 
 ## Bench-only instruments and references

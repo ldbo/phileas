@@ -4,13 +4,15 @@ for testing, or to demonstrate features, among others.
 """
 
 from abc import abstractmethod
-from dataclasses import dataclass
-from typing import ClassVar
+from dataclasses import dataclass, field
+from math import log10
+from typing import Any, ClassVar
 
 import numpy as np
 
 from phileas import Loader
 from phileas.factory import register_default_loader
+from phileas.iteration.base import DataTree
 
 
 @dataclass
@@ -24,6 +26,9 @@ class Motors:
 
     #: Y position of the motor.
     y: float = 0.0
+
+    #: Unique identifier of the motors.
+    id: str = "mock-motors-driver:1"
 
     def __post_init__(self):
         print("[Motors] Connection initiated.")
@@ -57,6 +62,27 @@ class MotorsLoader(Loader):
         """
         instrument.set_position(**configuration)
         self.logger.info(f"Position set to {configuration}.")
+
+    def get_effective_configuration(
+        self, instrument: Motors, configuration: None | dict = None
+    ) -> dict[str, DataTree]:
+        if configuration is None:
+            return self.dump_state(instrument)  # type: ignore[return-value]
+
+        for name in configuration.keys():
+            configuration[name] = getattr(instrument, name)
+
+        return configuration
+
+    def get_id(self, instrument: Motors) -> str:
+        return instrument.id
+
+    def dump_state(self, instrument: Motors) -> DataTree:
+        return {"x": instrument.x, "y": instrument.y}
+
+    def restore_state(self, instrument: Motors, state: dict[str, float]):  # type: ignore[override]
+        instrument.x = state["x"]
+        instrument.y = state["y"]
 
 
 class Probe:
@@ -117,11 +143,17 @@ class Oscilloscope:
     #: Probe which is connected to the oscilloscope
     probe: Probe
 
-    #: Amplitude of the measurements, which have a null offset.
-    amplitude: float = 1.0
+    #: Actual location of the :py:attr:`amplitude` field.
+    _amplitude: float = field(init=False, repr=False, default=1.0)
+
+    #: Unique identifier of the oscilloscope.
+    id: str = "mock-oscilloscope-driver:1"
 
     #: Bit width of the ADC.
     width: ClassVar[int] = 8
+
+    #: Version of the oscilloscope firmware.
+    fw_version: ClassVar[str] = "12.3"
 
     def __post_init__(self):
         print("[Oscilloscope] Connection initiated.")
@@ -133,6 +165,16 @@ class Oscilloscope:
         quantized = np.round(trimmed * (1 << self.width)) / (1 << self.width)
 
         return quantized
+
+    @property
+    def amplitude(self) -> float:
+        #: Amplitude of the measurements, which have a null offset.
+        return self._amplitude
+
+    @amplitude.setter
+    def amplitude(self, value: float):
+        value = 10 ** round(log10(value))
+        self._amplitude = value
 
 
 @register_default_loader
@@ -150,7 +192,8 @@ class OscilloscopeLoader(Loader):
          - probe (required): Name of the simulated probe to use.
 
         Supported probes, and parameters:
-         - electric-field-probe: No parameter
+         - electric-field-probe:
+            motors: name of the motors that position the probe
          - random-probe:
             shape: tuple with the required probe output shape
         """
@@ -161,7 +204,7 @@ class OscilloscopeLoader(Loader):
                     self.instruments_factory.get_bench_instrument(
                         configuration["motors"]
                     )
-                )
+                ),
             )
         elif probe == "random-probe":
             return Oscilloscope(probe=RandomProbe(shape=configuration["shape"]))
@@ -177,3 +220,41 @@ class OscilloscopeLoader(Loader):
             amplitude = configuration["amplitude"]
             instrument.amplitude = amplitude
             self.logger.info(f"Amplitude set to {amplitude}.")
+
+    def get_effective_configuration(
+        self, instrument: Oscilloscope, configuration: None | dict = None
+    ) -> dict:
+        eff_conf = {}
+
+        if configuration is None or "amplitude" in configuration:
+            eff_conf["amplitude"] = instrument.amplitude
+
+        return eff_conf
+
+    def get_id(self, instrument: Oscilloscope) -> str:
+        return instrument.id
+
+    def dump_state(self, instrument: Oscilloscope) -> DataTree:
+        return {
+            "probe": f"{type(instrument.probe).__name__}",
+            "amplitude": instrument.amplitude,
+            "bit_width": instrument.width,
+            "fw_version": instrument.fw_version,
+        }
+
+    def restore_state(self, instrument: Oscilloscope, state: dict[str, Any]):  # type: ignore[override]
+        if instrument.fw_version != state["fw_version"]:
+            raise ValueError(
+                f"Dumped FW version {state['fw_version']} is not compatible with"
+                f" instrument FW version {instrument.fw_version}."
+            )
+
+        if instrument.width != state["bit_width"]:
+            raise ValueError(
+                f"Dumped bit width {state['bit_width']} is not compatible with "
+                f"instrument bit width {instrument.width}."
+            )
+        instrument.amplitude = state["amplitude"]
+
+        if type(instrument.probe).__name__ != state["probe"]:
+            self.logger.warning("Cannot change the oscilloscope probe.")
