@@ -1,6 +1,6 @@
 # Installation
 
-Phileas supports Python 3.9 up to 3.12 versions.
+Phileas supports Python 3.9 up to 3.13 versions.
 
 It is available in PyPI, so you can install it with
 
@@ -11,9 +11,13 @@ pip install phileas
 ## Dependencies
 
 Phileas depends on
- - ``ruamel-yaml`` for parsing YAML files,
- - ``xarray`` and ``pandas`` to support exporting to their dataset formats, if you use the extras ``[xarray]``,
- - ``numpy`` for random numbers generation,
- - ``jinja2`` for templates files generation,
- - ``rich`` for generating the documentation of loaders and
- - ``graphviz`` for experiment graphs generation.
+ - `ruamel-yaml` for parsing YAML files,
+ - `xarray` and `pandas` to support exporting to their dataset formats, if you
+   use the extras `[xarray]` or `[pandas]`,
+ - `jupyterlab` and `matplotlib` for documentation notebooks generation, if you
+   use the extras `[notebook]`,
+ - `numpy` for random numbers generation,
+ - `jinja2` for templates files generation,
+ - `rich` for generating the documentation of loaders,
+ - `graphviz` for experiment graphs generation,
+ - `dacite` for building dataclasses from dicts, and
