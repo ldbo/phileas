@@ -12,14 +12,13 @@ import rich.console
 import rich.markdown
 
 import phileas
+from phileas.factory import ExperimentFactory
 
 _CONSOLE = rich.console.Console()
 _ERROR_CONSOLE = rich.console.Console(stderr=True, style="bold red")
 
-# List loaders
 
-
-def list_loaders(script: pathlib.Path) -> int:
+def _import_script(script: pathlib.Path) -> int | None:
     inspected_module_spec = importlib.util.spec_from_file_location(
         "inspected_module", script
     )
@@ -35,6 +34,17 @@ def list_loaders(script: pathlib.Path) -> int:
     inspected_module = importlib.util.module_from_spec(inspected_module_spec)
     loader.exec_module(inspected_module)
 
+    return None
+
+
+# List loaders
+
+
+def list_loaders(script: pathlib.Path) -> int:
+    rval = _import_script(script)
+    if rval is not None:
+        return rval
+
     doc = phileas.ExperimentFactory.get_default_loaders_markdown_documentation()
     if _CONSOLE.is_terminal:
         doc_md = rich.markdown.Markdown(doc)
@@ -43,6 +53,20 @@ def list_loaders(script: pathlib.Path) -> int:
         _CONSOLE.print(doc)
 
     return 0
+
+
+# Dump bench state
+
+
+def dump_state(
+    bench: pathlib.Path, experiment: pathlib.Path, script: pathlib.Path, full: bool
+):
+    rval = _import_script(script)
+    if rval is not None:
+        return rval
+
+    factory = ExperimentFactory(bench, experiment)
+    factory.dump_bench_state(full=full)
 
 
 # Template generation
@@ -109,7 +133,7 @@ def generate_script(
         try:
             importlib.import_module(experiment_config_path)
         except ImportError:
-            import experiment_config  # type: ignore[import-not-found]
+            import experiment_config  # type: ignore[import-not-found]  # noqa: F401
 
         factory = phileas.ExperimentFactory(bench, experiment)
         instruments_and_type = []
@@ -192,6 +216,39 @@ def main():
         help="Path of the analyzed script",
     )
     list_loaders_parser.set_defaults(callback=list_loaders)
+
+    # Dump state
+    dump_state_parser = commands_parser.add_parser(
+        "dump-state", description=("Dump the state of an experiment bench.")
+    )
+    dump_state_parser.add_argument(
+        "--bench",
+        "-b",
+        type=pathlib.Path,
+        help="Path of the bench configuration file.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--experiment",
+        "-e",
+        type=pathlib.Path,
+        help="Path of the experiment configuration file.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--script",
+        "-s",
+        type=str,
+        help="Path of a script which registers the required loaders.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--partial",
+        action="store_true",
+        default=True,
+        help=("Dump the bench instruments without their individual states"),
+    )
+    dump_state_parser.set_defaults(callback=dump_state)
 
     # Template generation
     generate_parser = commands_parser.add_parser(
