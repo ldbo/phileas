@@ -298,6 +298,16 @@ shuffle = generate_seeds(Shuffle(Sequence([1, 2, 3, 4, 5])))
 print(list(shuffle))
 ```
 
+##### First
+
+The {py:class}`~phileas.iteration.First` node only returns the first elements of
+its child.
+
+```{code-cell} ipython3
+first = First(IntegerRange(0, math.inf, 1), 10)
+print(list(first))
+```
+
 ##### Transform nodes
 
 {py:class}`~phileas.iteration.Transform` nodes are used to apply functions that

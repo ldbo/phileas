@@ -267,6 +267,40 @@ class Shuffle(YamlCustomType):
 
 @_iteration_tree_parser.register_class
 @dataclass
+class First(YamlCustomType):
+    """
+    :py:class:`~phileas.iteration.First` node, which only iterates over the
+    first elements of its child.
+    """
+
+    yaml_tag: ClassVar[str] = "!first"
+    child: Any
+    size: int | None
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> First:
+        mapping = constructor.construct_mapping(node, deep=True)
+        try:
+            child = mapping.pop("_child")
+            size = mapping.pop("_size", None)
+        except KeyError as e:
+            raise ValueError(f"!first requires a {e.args[0]} field") from e
+        return First(child, size)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: First):
+        return representer.represent_mapping(
+            cls.yaml_tag, {"_size": node.size, "_child": node.child}
+        )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.First(
+            raw_yaml_structure_to_iteration_tree(self.child), self.size
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
 class Pick(YamlCustomType):
     """
     Pick node, whose iteration alternatively returns a single of its children.

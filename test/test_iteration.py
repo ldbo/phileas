@@ -36,7 +36,7 @@ from phileas.iteration import (
     Union,
 )
 from phileas.iteration.base import ChildPath
-from phileas.iteration.node import Lazify, Pick, Shuffle, UnaryNode
+from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     flatten_datatree,
@@ -174,7 +174,7 @@ def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
 
 
 def unary_tree_node(draw, child: IterationTree) -> IterationTree:
-    types: list[type[UnaryNode]] = [IdTransform]
+    types: list[type[UnaryNode]] = [IdTransform, First]
     try:
         if child.safe_len() is not None:
             types.append(Shuffle)
@@ -182,6 +182,9 @@ def unary_tree_node(draw, child: IterationTree) -> IterationTree:
         pass
 
     Node = draw(st.sampled_from(types))
+    if Node == First:
+        return Node(child, draw(st.one_of(st.none(), st.integers(1, 3))))
+
     return Node(child)
 
 
@@ -884,6 +887,14 @@ class TestIteration(unittest.TestCase):
         self.assertEqual(len(values), len(shuffled_values))
         self.assertEqual(values, set(shuffled_values))
 
+    def test_first_finite(self):
+        tree = First(IntegerRange(start=0, end=math.inf, step=1), 10)
+        self.assertEqual(list(tree), list(range(10)))
+
+    def test_first_infinite(self):
+        tree = First(IntegerRange(start=0, end=5, step=1), None)
+        self.assertEqual(list(tree), list(range(6)))
+
     @given(iteration_tree())
     def test_requested_configuration_is_not_configurable(self, tree: IterationTree):
         def assert_not_configurable(
@@ -1220,7 +1231,17 @@ class TestIteration(unittest.TestCase):
         import xarray as xr
 
         hypothesis.note(f"The iteration tree is {tree}")
-        if tree.safe_len() is None:
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
             with self.assertRaises(InfiniteLength):
                 iteration_tree_to_xarray_parameters(tree)
         else:

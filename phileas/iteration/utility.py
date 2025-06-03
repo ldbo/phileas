@@ -200,6 +200,8 @@ def iteration_tree_to_xarray_parameters(
     :py:class:`xarray.DataFrame`. You can then modify them, if needed, and build
     the xarray container used to store the results of your experiment.
 
+    This function can only be applied to trees that only have finite leaves.
+
     >>> import numpy as np
     >>> import xarray as xr
     >>> coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
