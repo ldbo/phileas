@@ -3,6 +3,7 @@ import datetime
 import itertools
 import math
 import unittest
+from typing import Literal
 
 import hypothesis
 import numpy as np
@@ -201,7 +202,7 @@ def union(
     presets: list[str | None] = ["first"]
     if isinstance(children, dict):
         presets.append(None)
-    preset = draw(st.sampled_from(["first"]))
+    preset = draw(st.sampled_from(presets))
 
     common_presets = [False]
     if preset == "first":
@@ -213,13 +214,15 @@ def union(
         children_list = list(children.values())
     assert isinstance(children_list, list)
 
-    resets = ["first", None]
+    resets: list[Literal["first"] | Literal["last"] | None] = ["first"]
+    if isinstance(children, dict):
+        resets.append(None)
     try:
         if all(child.safe_len() is not None for child in children_list):
             resets.append("last")
     except TypeError:  # This happens with NumericRange leaves
         pass
-    reset = draw(st.sampled_from(["first"]))
+    reset = draw(st.sampled_from(resets))
 
     return Union(
         children, lazy=lazy, preset=preset, common_preset=common_preset, reset=reset
