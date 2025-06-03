@@ -85,7 +85,7 @@ for conf in factory.experiment_config:
 Let us now consider the case where we set the `lazy` and `snake` parameters of the configuration:
 
 ```{code-cell} ipython3
-exp_conf = factory.experiment_config.with_params([], lazy=True, snake=True)
+exp_conf = factory.experiment_config.with_params(lazy=True, snake=True)
 for conf in exp_conf:
     print(conf)
 ```

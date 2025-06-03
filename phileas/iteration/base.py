@@ -575,7 +575,7 @@ class IterationTree(ABC):
     # After using a modification function, only the output of the function
     # should be used, and `self` should be discarded.
 
-    def with_params(self, path=ChildPath | None, **kwargs) -> IterationTree:
+    def with_params(self, path: ChildPath | None = None, **kwargs) -> IterationTree:
         """
         Returns a similar iteration tree, where the node at ``path`` is assigned
         the given keyword parameters. If ``path`` is not specified, modifies
