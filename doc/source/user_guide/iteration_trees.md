@@ -254,6 +254,43 @@ for value in Union(dict(value1=tree1, value2=tree2, value3=tree3), common_preset
     print(value)
 ```
 
+##### Zip
+
+The {py:class}`~phileas.iteration.Zip` node behaves similarly as the built-in
+{py:class}`zip` function: it iterates over all of its children at the same time.
+
+```{code-cell} ipython
+tree1 = Sequence(["1.1", "1.2", "1.3"])
+tree2 = Sequence(["2.1", "2.2"])
+
+for value in Zip([tree1, tree2]):
+    print(value)
+```
+
+Here, iteration over `tree1` stops before its end is reached. If you want to
+reach the end of all the children, you can specify the argument `stops_at="longest"`:
+
+```{code-cell} ipython
+tree1 = Sequence(["1.1", "1.2", "1.3"])
+tree2 = Sequence(["2.1", "2.2"])
+
+for value in Zip(dict(value1=tree1, value2=tree2), stops_at="longest"):
+    print(value)
+```
+
+Note that we switched the type of the children to `dict`. It is required when
+`stops_at = "longest"`, as some children elements might go missing.
+
+```{code-cell} ipython
+:tags: [raises-exception]
+
+tree1 = Sequence(["1.1", "1.2", "1.3"])
+tree2 = Sequence(["2.1", "2.2"])
+
+for value in Zip([tree1, tree2], stops_at="longest"):
+    print(value)
+```
+
 ##### Pick
 
 {py:class}`~phileas.iteration.Pick` behaves similarly as union iteration,

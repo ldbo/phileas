@@ -34,6 +34,7 @@ from phileas.iteration import (
     Sequence,
     Transform,
     Union,
+    Zip,
 )
 from phileas.iteration.base import ChildPath
 from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
@@ -225,6 +226,17 @@ def union(
     )
 
 
+def zip_node(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> Zip:
+    stops_ats = ["shortest"]
+    if isinstance(children, dict):
+        stops_ats.append("longest")
+    stops_at = draw(st.sampled_from(stops_ats))
+
+    return Zip(children, lazy=lazy, stops_at=stops_at)
+
+
 def pick(
     draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
 ) -> IterationMethod:
@@ -269,6 +281,7 @@ def iteration_method_node(
         cartesian_product,
         union,
         pick,
+        zip_node,
     ]
     lazy = False
     if isinstance(children, dict):
@@ -827,6 +840,45 @@ class TestIteration(unittest.TestCase):
             [1, 1, 3, 1],
             [1, 1, 4, 1],
             [1, 1, 5, 1],
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    @given(st.lists(iterable_iteration_tree_and_index(), min_size=1, max_size=3))
+    def test_zip_shortest(self, tree_index_list: list[tuple[IterationTree, int]]):
+        children = [tree for (tree, _) in tree_index_list]
+        tree = Zip(children=children, stops_at="shortest")
+
+        if len(tree.configurations) != 0:
+            return
+
+        if tree.safe_len() is not None:
+            iterated_list = list(tree)
+            hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
+            expected_list = [list(v) for v in zip(*children)]
+            hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
+            self.assertEqual(iterated_list, expected_list)
+        else:
+            indices = [index for (_, index) in tree_index_list]
+            index = max(indices)
+            iterated_list = list(itertools.islice(tree, index))
+            hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
+            expected_list = list(
+                itertools.islice((list(v) for v in zip(*children)), index)
+            )
+            hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
+            self.assertEqual(iterated_list, expected_list)
+
+    def test_zip_longest(self):
+        tree = Zip(
+            {"a": Sequence([1, 2, 3]), "b": Sequence([1, 2])}, stops_at="longest"
+        )
+
+        iterated_list = list(tree)
+        expected_list = [
+            {"a": 1, "b": 1},
+            {"a": 2, "b": 2},
+            {"a": 3},
         ]
 
         self.assertEqual(iterated_list, expected_list)

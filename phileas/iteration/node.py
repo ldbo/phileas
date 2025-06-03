@@ -683,6 +683,76 @@ class UnionIterator(IterationMethodIterator[Union]):
 
 
 @dataclass(frozen=True)
+class Zip(IterationMethod):
+    """
+    Iteration over all of the children of the nodes at the same time, in a way
+    similar to :py:func:`zip`.
+    """
+
+    #: If `shortest`, iteration stops whenever the first child is exhausted. If
+    #: `longest`, iteration continues until the last child is exhausted. Note
+    #: that `longest` is only supported for `dict` children.
+    stops_at: Literal["longest"] | Literal["shortest"] = "shortest"
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.stops_at not in ("longest", "shortest"):
+            raise ValueError("Zip only supports longest and shortest stops_at.")
+
+        if self.stops_at == "longest" and isinstance(self.children, list):
+            raise ValueError("Zip with stops_at = longest requires dict children.")
+
+    def _iter(self) -> TreeIterator:
+        size = self.safe_len()
+        if isinstance(self.children, dict):
+            return ZipIterator(
+                self.with_params(
+                    [],
+                    children={
+                        name: First(child, size)
+                        for name, child in self.children.items()
+                    },
+                )
+            )
+        else:
+            return ZipIterator(
+                self.with_params(
+                    [], children=[First(child, size) for child in self.children]
+                )
+            )
+
+    def _len(self) -> int:
+        children: list[IterationTree]
+        if isinstance(self.children, list):
+            children = self.children
+        else:
+            assert isinstance(self.children, dict)
+            children = list(self.children.values())
+
+        if self.stops_at == "longest":
+            return max(len(child) for child in children)
+        else:
+            lengths = (child.safe_len() for child in children)
+            try:
+                return min(
+                    child_length for child_length in lengths if child_length is not None
+                )
+            except ValueError:  # min() arg is an empty sequence
+                raise InfiniteLength from ValueError
+
+
+class ZipIterator(IterationMethodIterator[Zip]):
+    def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
+        sizes: list[int | None] = [position] * len(self.sizes)
+        for child_pos, size in enumerate(self.sizes):
+            if size is not None and size <= position:
+                sizes[child_pos] = None
+
+        return sizes
+
+
+@dataclass(frozen=True)
 class Pick(RandomTree, IterationMethod):
     """
     Randomly pick and return one child at a time. For finite trees, it behaves

@@ -48,6 +48,7 @@ __all__ = [
     "Transform",
     "TreeIterator",
     "Union",
+    "Zip",
     "_Child",
     "_NoDefault",
     "child",
@@ -97,6 +98,7 @@ from .node import (
     Shuffle,
     Transform,
     Union,
+    Zip,
 )
 from .random import Seed, generate_seeds
 from .utility import restrict_leaves_sizes

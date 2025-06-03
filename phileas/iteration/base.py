@@ -12,14 +12,9 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
-from typing_extensions import assert_never
-
-if TYPE_CHECKING:  # pragma: no cover
-    from _typeshed import Self  # pragma: no cover
-else:
-    Self = Any
+from typing_extensions import Self, assert_never
 
 from ..logging import logger
 from ..utility import Sentinel
@@ -575,7 +570,7 @@ class IterationTree(ABC):
     # After using a modification function, only the output of the function
     # should be used, and `self` should be discarded.
 
-    def with_params(self, path: ChildPath | None = None, **kwargs) -> IterationTree:
+    def with_params(self: Self, path: ChildPath | None = None, **kwargs) -> Self:
         """
         Returns a similar iteration tree, where the node at ``path`` is assigned
         the given keyword parameters. If ``path`` is not specified, modifies
@@ -591,7 +586,10 @@ class IterationTree(ABC):
 
             return tree
 
-        return self.depth_first_modify(modifier)
+        modified_tree = self.depth_first_modify(modifier)
+        assert isinstance(modified_tree, type(self))
+
+        return modified_tree
 
     def get(self, path: ChildPath) -> IterationTree:
         """
