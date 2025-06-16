@@ -126,6 +126,7 @@ num_range = LinearRange(start=1, end=2, steps=12)
 integer_range = IntegerRange(start=0, end=math.inf)
 uniform = NumpyRNG()
 bigint_uniform = UniformBigIntegerRng(low=0, high=1 << 32)
+prime_number = PrimeNumberRng(low=200, high=300)
 ```
 
 #### N-ary nodes: iteration methods

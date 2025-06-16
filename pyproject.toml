@@ -17,6 +17,7 @@ pandas = "^2.2.3"
 matplotlib = "^3.9"
 jupyterlab = "^4.4.2"
 dacite = "^1.9.2"
+sympy = "^1.14.0"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.18"
@@ -38,6 +39,7 @@ jupytext = "^1.17.1"
 xarray = ["xarray"]
 pandas = ["pandas"]
 notebooks = ["matplotlib", "xarray", "pandas", "jupyterlab"]
+sympy = ["sympy"]
 
 [tool.poetry.scripts]
 phileas = 'phileas.__main__:main'
@@ -67,3 +69,4 @@ include = [
 
 [tool.mypy]
 check_untyped_defs = true
+follow_untyped_imports = true

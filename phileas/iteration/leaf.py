@@ -22,7 +22,7 @@ from .base import (
     _NoDefault,
     no_default,
 )
-from .random import RandomTree
+from .random import RandomTree, Seed
 
 DT = TypeVar("DT", bound=DataTree)
 
@@ -479,3 +479,119 @@ class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
             )
 
         return self.tree.low + value
+
+
+@dataclass(frozen=True)
+class PrimeRng(RandomIterationLeaf):
+    """
+    Random iteration leaf generating prime numbers.
+
+    Generation is done in two steps:
+
+    #. a uniform integer is uniformly drawn from the interval ``[low, high]``;
+    #. sympy :py:func:`~sympy.nextprime` and :py:func:`~sympy.prevprime` are
+       used to find the closest prime.
+    """
+
+    #: Lower generation bound, inclusive.
+    high: int = 0
+
+    #: Upper generation bound, inclusive.
+    low: int = 255
+
+    def __post_init__(self):
+        if self.low > self.high:
+            raise ValueError(
+                "Lower bound must be smaller or equal to the higher bound."
+            )
+
+    def _iter(self) -> TreeIterator:
+        return PrimeRngIterator(self)
+
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
+        if self.default_value == no_default:
+            raise NoDefaultError.build_from(self)
+
+        return self.default_value
+
+
+@dataclass
+class PrimeRngIterator(TreeIterator[PrimeRng]):
+    """
+    Iterator that generates random prime numbers by uniformly generating an
+    number with the big integer RNG, before finding a neighboring prime with
+    sympy :py:func:`~sympy.prevprime` and :py:func:`~sympy.nextprime`.
+
+    Details on the process:
+
+    #. Generate a big integer,
+    #. find the next and previous primes with Sympy,
+    #. return the closest one inside the range; if they are equidistant, pick
+       one randomly.
+    """
+
+    neighbor_choice_iterator: NumpyRNGIterator
+
+    def __init__(self, tree: PrimeRng) -> None:
+        super().__init__(tree)
+
+        import sympy
+
+        nextp = sympy.nextprime(tree.low - 1)
+        if nextp > tree.high:
+            raise ValueError("No prime number in the requested interval.")
+
+        if tree.seed is None:
+            raise ValueError("Cannot iterate over a non seeded random leaf.")
+
+        neighbor_choice = NumpyRNG(
+            distribution=np.random.Generator.choice,
+            kwargs={"a": [0, 1]},
+            seed=tree.seed,
+        )
+        self.neighbor_choice_iterator = iter(neighbor_choice)  # type: ignore[assignment]
+
+    def _current_value(self) -> DataTree:
+        import sympy
+
+        seed = self.tree.seed
+        assert seed is not None
+        uniform = UniformBigIntegerRng(
+            low=self.tree.low,
+            high=self.tree.high,
+            seed=Seed(path=seed.path + [self.position], salt=seed.salt),
+        )
+        uniform_iterator = iter(uniform)  # type: ignore[assignment]
+
+        value = next(uniform_iterator)
+        if sympy.isprime(value):
+            return value
+
+        try:
+            previous_prime = sympy.prevprime(value)
+            if previous_prime < self.tree.low:
+                previous_prime = None
+        except ValueError:
+            previous_prime = None
+
+        try:
+            next_prime = sympy.nextprime(value)
+            if next_prime > self.tree.high:
+                next_prime = None
+        except ValueError:
+            next_prime = None
+
+        assert not (previous_prime is None and next_prime is None)
+
+        if previous_prime is None:
+            return next_prime
+        if next_prime is None:
+            return previous_prime
+
+        if (value - previous_prime) < (next_prime - value):
+            return previous_prime
+        elif (value - previous_prime) > (next_prime - value):
+            return next_prime
+        else:
+            choice: int = self.neighbor_choice_iterator[self.position]  # type: ignore[assignment]
+            return [previous_prime, next_prime][choice]

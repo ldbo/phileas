@@ -16,8 +16,9 @@ Phileas depends on
    use the extras `[xarray]` or `[pandas]`,
  - `jupyterlab` and `matplotlib` for documentation notebooks generation, if you
    use the extras `[notebook]`,
+ - `sympy` for random prime generation, if you use the extras `[sympy]`,
  - `numpy` for random numbers generation,
  - `jinja2` for templates files generation,
  - `rich` for generating the documentation of loaders,
- - `graphviz` for experiment graphs generation,
- - `dacite` for building dataclasses from dicts, and
+ - `graphviz` for experiment graphs generation, and
+ - `dacite` for building dataclasses from dicts.

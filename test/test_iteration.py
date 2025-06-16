@@ -38,7 +38,7 @@ from phileas.iteration import (
     Zip,
 )
 from phileas.iteration.base import ChildPath
-from phileas.iteration.leaf import UniformBigIntegerRng
+from phileas.iteration.leaf import PrimeRng, UniformBigIntegerRng
 from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
@@ -140,6 +140,7 @@ def random_big_integer_leaf(draw) -> UniformBigIntegerRng:
     low = draw(st.integers(0, 3))
     high = low + draw(st.integers(0, 3))
     default = draw(st.one_of(st.none(), data_tree))
+
     return UniformBigIntegerRng(
         seed=seed,
         low=low,
@@ -484,6 +485,43 @@ class TestIteration(unittest.TestCase):
 
         self.assertGreaterEqual(min_values, low)
         self.assertLessEqual(max_values, low + delta)
+
+    def test_prime_number_rng_no_prime(self):
+        leaf = generate_seeds(PrimeRng(low=114, high=126))
+        with self.assertRaises(ValueError):
+            iter(leaf)
+
+    @given(st.integers(0, 100), st.integers(0, 100))
+    def test_prime_number_rng_valid(self, size: int, salt: int):
+        leaf = generate_seeds(PrimeRng(low=100, high=200), salt=salt)
+        generated_primes = list(itertools.islice(leaf, size))
+        formatted_list = "\n".join(f" - {s}" for s in generated_primes)
+        hypothesis.note(f"Generated primes: \n{formatted_list}")
+        prime_numbers = {
+            101,
+            103,
+            107,
+            109,
+            113,
+            127,
+            131,
+            137,
+            139,
+            149,
+            151,
+            157,
+            163,
+            167,
+            173,
+            179,
+            181,
+            191,
+            193,
+            197,
+            199,
+            211,
+        }
+        self.assertLessEqual(set(generated_primes), prime_numbers)
 
     ## Iteration nodes ##
 
