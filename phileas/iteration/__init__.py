@@ -47,6 +47,7 @@ __all__ = [
     "Shuffle",
     "Transform",
     "TreeIterator",
+    "UniformBigIntegerRng",
     "Union",
     "Zip",
     "_Child",
@@ -85,6 +86,7 @@ from .leaf import (
     NumpyRNG,
     RandomIterationLeaf,
     Sequence,
+    UniformBigIntegerRng,
 )
 from .node import (
     Accumulator,

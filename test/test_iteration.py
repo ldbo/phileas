@@ -38,6 +38,7 @@ from phileas.iteration import (
     Zip,
 )
 from phileas.iteration.base import ChildPath
+from phileas.iteration.leaf import UniformBigIntegerRng
 from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
@@ -133,6 +134,22 @@ def random_leaf(draw):
 
 
 @st.composite
+def random_big_integer_leaf(draw) -> UniformBigIntegerRng:
+    seed = Seed([], draw(data_tree))
+    size = draw(st.integers(1, 3))
+    low = draw(st.integers(0, 3))
+    high = low + draw(st.integers(0, 3))
+    default = draw(st.one_of(st.none(), data_tree))
+    return UniformBigIntegerRng(
+        seed=seed,
+        low=low,
+        high=high,
+        size=size,
+        default_value=default,
+    )
+
+
+@st.composite
 def generator_wrapper(draw):
     size = draw(st.integers(1, 3))
     return GeneratorWrapper(lambda: iter(range(size)), size=size)
@@ -146,6 +163,7 @@ iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    random_big_integer_leaf(),
     generator_wrapper(),
 )
 
@@ -156,6 +174,7 @@ iterable_iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    random_big_integer_leaf(),
     generator_wrapper(),
 )
 
@@ -448,6 +467,23 @@ class TestIteration(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             list(iter(tree))
+
+    @given(
+        st.integers(min_value=-512, max_value=512),
+        st.integers(min_value=0, max_value=255),
+        st.integers(min_value=0, max_value=10),
+    )
+    def test_uniform_integer_rng_bounds(self, low: int, delta: int, salt: int):
+        rng = generate_seeds(UniformBigIntegerRng(low=low, high=low + delta), salt=salt)
+        values: list[int] = list(itertools.islice(rng, 100))  # type: ignore[assignment,arg-type]
+        assert all(isinstance(v, int) for v in values)
+
+        hypothesis.note(f"Generated values: {values}")
+        min_values = min(values)
+        max_values = max(values)
+
+        self.assertGreaterEqual(min_values, low)
+        self.assertLessEqual(max_values, low + delta)
 
     ## Iteration nodes ##
 

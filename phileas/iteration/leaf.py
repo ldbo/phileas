@@ -413,3 +413,69 @@ class NumpyRNGIterator(TreeIterator[NumpyRNG]):
         random = self.tree.distribution(generator, *self.tree.args, **self.tree.kwargs)
 
         return random
+
+
+@dataclass(frozen=True)
+class UniformBigIntegerRng(RandomIterationLeaf):
+    """
+    Random iteration leaf generating arbitrarily big integers. It works by
+    iteratively repeatedly using a Numpy RNG.
+
+    By default returns a byte (integer larger or equal to 0 and smaller than 256).
+    """
+
+    #: The inclusively lowest value that may be taken by the output.
+    low: int = 0
+
+    #: The inclusively highest value that may be taken by the output.
+    high: int = 255
+
+    def __post_init__(self):
+        if self.low > self.high:
+            raise ValueError("Lower bound must be smaller or equal to the upper bound.")
+
+    def _iter(self) -> TreeIterator:
+        return UniformBigIntegerRngIterator(self)
+
+    def _default(self, no_default_policy: NoDefaultPolicy) -> DataTree:
+        if self.default_value == no_default:
+            raise NoDefaultError.build_from(self)
+
+        return self.default_value
+
+
+@dataclass
+class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
+    """
+    Iterator that generates random numbers by reseeding a numpy byte generator.
+
+    Bytes are repeatedly sampled until the generated number fits in the required
+    bounds.
+    """
+
+    seed: list[int]
+
+    #: The number of bytes required to generate a new integer. It is positive.
+    _required_bytes: int
+
+    def __init__(self, tree: UniformBigIntegerRng) -> None:
+        super().__init__(tree)
+
+        if tree.seed is None:
+            raise ValueError("Cannot iterate over a non seeded random leaf.")
+
+        self.seed = list(tree.seed.to_bytes())
+        self._required_bytes = 1 + (self.tree.high - self.tree.low) // 256
+
+    def _current_value(self) -> DataTree:
+        generator = np.random.Generator(
+            np.random.PCG64(self.seed + list(f"%{self.position}".encode("utf-8")))
+        )
+
+        value = self.tree.high - self.tree.low + 1
+        while value > (self.tree.high - self.tree.low):
+            value = int.from_bytes(
+                generator.bytes(self._required_bytes), byteorder="little"
+            )
+
+        return self.tree.low + value
