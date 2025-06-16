@@ -256,8 +256,9 @@ def zip_node(
     if isinstance(children, dict):
         stops_ats.append("longest")
     stops_at = draw(st.sampled_from(stops_ats))
+    ignore_fixed = draw(st.booleans())
 
-    return Zip(children, lazy=lazy, stops_at=stops_at)
+    return Zip(children, lazy=lazy, stops_at=stops_at, ignore_fixed=ignore_fixed)
 
 
 def pick(
@@ -924,7 +925,7 @@ class TestIteration(unittest.TestCase):
     @given(st.lists(iterable_iteration_tree_and_index(), min_size=1, max_size=3))
     def test_zip_shortest(self, tree_index_list: list[tuple[IterationTree, int]]):
         children = [tree for (tree, _) in tree_index_list]
-        tree = Zip(children=children, stops_at="shortest")
+        tree = Zip(children=children, stops_at="shortest", ignore_fixed=False)
 
         if len(tree.configurations) != 0:
             return

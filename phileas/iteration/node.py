@@ -689,10 +689,14 @@ class Zip(IterationMethod):
     similar to :py:func:`zip`.
     """
 
-    #: If `shortest`, iteration stops whenever the first child is exhausted. If
-    #: `longest`, iteration continues until the last child is exhausted. Note
-    #: that `longest` is only supported for `dict` children.
+    #: If ``shortest``, iteration stops whenever the first child is exhausted.
+    #: If ``longest``, iteration continues until the last child is exhausted.
+    #: Note that ``longest`` is only supported for ``dict`` children.
     stops_at: Literal["longest"] | Literal["shortest"] = "shortest"
+
+    #: Ignore children with a fixed value, *ie* those with length 1. When set,
+    #: they do not restrict the node size to 1.
+    ignore_fixed: bool = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -705,6 +709,7 @@ class Zip(IterationMethod):
 
     def _iter(self) -> TreeIterator:
         size = self.safe_len()
+
         if isinstance(self.children, dict):
             return ZipIterator(
                 self.with_params(
@@ -733,23 +738,36 @@ class Zip(IterationMethod):
         if self.stops_at == "longest":
             return max(len(child) for child in children)
         else:
-            lengths = (child.safe_len() for child in children)
-            try:
-                return min(
-                    child_length for child_length in lengths if child_length is not None
-                )
-            except ValueError:  # min() arg is an empty sequence
-                raise InfiniteLength from ValueError
+            ignored: list[None | int] = [None]
+            if self.ignore_fixed:
+                ignored.append(1)
+
+            lengths = [child.safe_len() for child in children]
+            valid_lengths: list[int] = [
+                length for length in lengths if length not in ignored  # type: ignore[misc]
+            ]
+
+            if len(valid_lengths) == 0:
+                if lengths[0] is None:
+                    raise InfiniteLength from ValueError
+                else:
+                    assert lengths[0] == 1
+                    return 1
+            else:
+                return min(valid_lengths)
 
 
 class ZipIterator(IterationMethodIterator[Zip]):
     def _children_positions(self, position: int) -> Sequence[int | DefaultIndex | None]:
-        sizes: list[int | None] = [position] * len(self.sizes)
+        positions: list[int | None] = [position] * len(self.sizes)
         for child_pos, size in enumerate(self.sizes):
             if size is not None and size <= position:
-                sizes[child_pos] = None
+                positions[child_pos] = None
 
-        return sizes
+            if self.tree.ignore_fixed and size == 1:
+                positions[child_pos] = 0
+
+        return positions
 
 
 @dataclass(frozen=True)

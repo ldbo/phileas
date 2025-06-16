@@ -270,7 +270,8 @@ for value in Zip([tree1, tree2]):
 ```
 
 Here, iteration over `tree1` stops before its end is reached. If you want to
-reach the end of all the children, you can specify the argument `stops_at="longest"`:
+reach the end of all the children, you can specify the argument
+`stops_at="longest"`:
 
 ```{code-cell} ipython
 tree1 = Sequence(["1.1", "1.2", "1.3"])
@@ -290,6 +291,31 @@ tree1 = Sequence(["1.1", "1.2", "1.3"])
 tree2 = Sequence(["2.1", "2.2"])
 
 for value in Zip([tree1, tree2], stops_at="longest"):
+    print(value)
+```
+
+Iteration trees often contain literal leaves, which represent a single value.
+They are typically used when configuring an instrument with a fixed value.
+Putting them inside a zip node with `stops_at = "shortest"` would thus create a
+node with length 1. Most of the time, this is not expected, which is why the
+attribute `ignore_fixed` is added. By default, it is set. In this case, fixed
+values are ignored during iteration:
+
+```{code-cell} ipython
+tree1 = Sequence(["1.1", "1.2", "1.3"])
+tree2 = Sequence(["2.1"])
+
+for value in Zip(dict(value1=tree1, value2=tree2)):
+    print(value)
+```
+
+Otherwise, iteration is restricted to the first children values:
+
+```{code-cell} ipython
+tree1 = Sequence(["1.1", "1.2", "1.3"])
+tree2 = Sequence(["2.1"])
+
+for value in Zip(dict(value1=tree1, value2=tree2), ignore_fixed=False):
     print(value)
 ```
 

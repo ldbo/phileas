@@ -247,6 +247,7 @@ class Zip(YamlCustomType):
     order: list[Key] | None
     lazy: bool
     stops_at: Literal["shortest"] | Literal["longest"]
+    ignore_fixed: bool
 
     @classmethod
     def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Zip:
@@ -255,10 +256,19 @@ class Zip(YamlCustomType):
             order = mapping.pop("_order", None)
             lazy = mapping.pop("_lazy", False)
             stops_at = mapping.pop("_stops_at", "shortest")
-            return Zip(children=mapping, order=order, lazy=lazy, stops_at=stops_at)
+            ignore_fixed = mapping.pop("_ignore_fixed", True)
+            return Zip(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                stops_at=stops_at,
+                ignore_fixed=ignore_fixed,
+            )
         else:
             children = constructor.construct_sequence(node, deep=True)
-            return Zip(children, order=None, lazy=False, stops_at="shortest")
+            return Zip(
+                children, order=None, lazy=False, stops_at="shortest", ignore_fixed=True
+            )
 
     def to_iteration_tree(self) -> iteration.IterationTree:
         children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
@@ -273,7 +283,11 @@ class Zip(YamlCustomType):
                 for name, child in self.children.items()
             }
         return iteration.Zip(
-            children, order=self.order, lazy=self.lazy, stops_at=self.stops_at
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            stops_at=self.stops_at,
+            ignore_fixed=self.ignore_fixed,
         )
 
 
