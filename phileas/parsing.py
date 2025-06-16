@@ -550,6 +550,44 @@ class Random(YamlCustomType):
         )
 
 
+@_iteration_tree_parser.register_class
+@dataclass
+class UniformBigIntegerRng(YamlCustomType):
+    yaml_tag: ClassVar[str] = "!random_uniform_bigint"
+    high: int
+    low: int = 0
+    size: int | None = None
+    default: iteration.DataTree | None = None
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.UniformBigIntegerRng(
+            seed=None,
+            size=self.size,
+            default_value=self.default,
+            low=self.low,
+            high=self.high,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class PrimeRng(YamlCustomType):
+    yaml_tag: ClassVar[str] = "!random_prime"
+    high: int
+    low: int = 0
+    size: int | None = None
+    default: iteration.DataTree | None = None
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.PrimeRng(
+            seed=None,
+            size=self.size,
+            default_value=self.default,
+            low=self.low,
+            high=self.high,
+        )
+
+
 ### Conversion to iteration tree ###
 
 

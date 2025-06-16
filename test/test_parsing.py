@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from phileas import iteration
+from phileas.iteration.leaf import PrimeRng, UniformBigIntegerRng
 from phileas.parsing import load_iteration_tree_from_yaml_file
 
 
@@ -69,6 +70,31 @@ default: 12
             load_iteration_tree_from_yaml_file(content),
             iteration.Sequence([1, 2, 3]),
         )
+
+    def test_random_uniform_bigint(self):
+        content = """
+!random_uniform_bigint
+    low: 12
+    high: 157
+    size: 10
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = UniformBigIntegerRng(
+            seed=None, size=10, default_value=None, low=12, high=157
+        )
+        self.assertEqual(tree, expected_tree)
+
+    def test_random_prime(self):
+        content = """
+!random_prime
+    low: 100
+    high: 200
+"""
+        tree = load_iteration_tree_from_yaml_file(content)
+        expected_tree = PrimeRng(
+            seed=None, size=None, default_value=None, low=100, high=200
+        )
+        self.assertEqual(tree, expected_tree)
 
     def test_product(self):
         content = """

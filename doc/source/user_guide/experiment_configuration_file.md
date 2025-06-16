@@ -272,7 +272,8 @@ For now, transform nodes are not supported. You have to add them to the iteratio
 
 ### Iteration leaves
 
-`!sequence` builds {py:class}`~phileas.iteration.Sequence` nodes. It can be used in the short form `!sequence [a, b, c]`, or its long form
+`!sequence` builds {py:class}`~phileas.iteration.Sequence` nodes. It can be used
+in the short form `!sequence [a, b, c]`, or its long form
 
 ```{code-block} yaml
 !sequence
@@ -290,7 +291,17 @@ expects a `start` and `end` parameters, and either
 {py:class}`~phileas.iteration.NumpyRNG`. It expects a `distribution` argument,
 which is the string name of a numpy distribution. You can find them in
 {py:class}`numpy.random.Generator`. Its parameters are given in the
-`parameters` field, as a mapping. You can additionally give it a finite `size`, and a `default` value.
+`parameters` field, as a mapping. You can additionally give it a finite `size`,
+and a `default` value.
+
+If you want to generate arbitrarily big integers, you can't use `!random`, as
+Numpy does not support generating them. Instead, you can use
+`!random_uniform_bigint` to generate uniformly sampled integers. It takes two
+mandatory arguments `low` and `high`, which are the inclusive bounds of the
+generated interval.
+
+You can generate prime numbers with `!random_prime`, which has the same
+arguments as `!random_uniform_bigint`.
 
 ## Template generation
 
