@@ -20,5 +20,6 @@ Phileas depends on
  - `numpy` for random numbers generation,
  - `jinja2` for templates files generation,
  - `rich` for generating the documentation of loaders,
- - `graphviz` for experiment graphs generation, and
- - `dacite` for building dataclasses from dicts.
+ - `graphviz` for experiment graphs generation,
+ - `dacite` for building dataclasses from dicts, and
+ - `typing_extensions` for static typing.

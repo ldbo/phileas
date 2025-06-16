@@ -18,6 +18,7 @@ matplotlib = "^3.9"
 jupyterlab = "^4.4.2"
 dacite = "^1.9.2"
 sympy = "^1.14.0"
+typing-extensions = "^4.14.0"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.18"
