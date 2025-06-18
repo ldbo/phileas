@@ -63,7 +63,8 @@ This example uses simulated instruments, availabe in the
 ```{code-cell} ipython3
 motors = mock_instruments.Motors()
 probe = mock_instruments.ElectricFieldProbe(motors)
-oscilloscope = mock_instruments.Oscilloscope(probe, amplitude=1)
+oscilloscope = mock_instruments.Oscilloscope(probe)
+oscilloscope.amplitude = 1
 
 print(f"Field value with {motors}: {oscilloscope.get_measurement()}")
 motors.set_position(x=1, y=1.5)

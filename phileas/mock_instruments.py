@@ -3,16 +3,102 @@ This module defines simulated instruments drivers and loaders. They can be used
 for testing, or to demonstrate features, among others.
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from math import log10
+from pathlib import Path
 from typing import Any, ClassVar
 
 import numpy as np
 
-from phileas import Loader
+from phileas import Loader, logger
 from phileas.factory import register_default_loader
 from phileas.iteration.base import DataTree
+
+logger = logger.getChild(__name__)
+
+
+class SimulatedAESImplementation:
+    """
+    Simulation of an embedded AES implementation. It can be plugged to a probe,
+    in order to simulate SCA.
+    """
+
+    #: Path of the device used for the serial connection
+    serial_device: Path
+
+    #: Serial connection baudrate
+    baudrate: int
+
+    #: Current probe used to perform simulated SCA. If you want to use it,
+    #: simply set this attribute.
+    probe: CurrentProbe | None
+
+    #: Encryption key
+    _key: int | None = None
+
+    def __init__(self, serial_device: Path, baudrate: int) -> None:
+        self.serial_device = serial_device
+        self.baudrate = baudrate
+        logger.info(
+            f"Connected to the AES DUT on {serial_device} with baudrate {baudrate}."
+        )
+        self._key = None
+
+    @property
+    def key(self) -> int | None:
+        return self._key
+
+    @key.setter
+    def key(self, value: int):
+        self._key = value
+        logger.info(f"AES DUT key set to {value}.")
+
+    def encrypt(self, plaintext: int) -> int:
+        """
+        Encrypt a plaintext. The :py:attr:`key` must be set before encryption.
+        """
+        if self.probe is not None:
+            self.probe.last_measurement = np.array([plaintext])
+
+        return 0
+
+    def decrypt(self, cyphertext: int) -> int:
+        """
+        Decrypt a cyphertext. The :py:attr:`key` must be set before decryption.
+        """
+        if self.probe is not None:
+            self.probe.last_measurement = np.array([cyphertext])
+
+        return 0
+
+
+@register_default_loader
+class SimulatedAESImplementationLoader(Loader):
+    """
+    Loader of a simulated AES implementation, used for SCA.
+    """
+
+    name = "phileas-mock_aes-phileas"
+    interfaces = {"aes"}
+
+    def initiate_connection(self, configuration: dict) -> Any:
+        probe = self.instruments_factory.get_bench_instrument(configuration["probe"])
+        if not isinstance(probe, CurrentProbe):
+            raise TypeError("The simulated AES only supports current probes.")
+
+        aes = SimulatedAESImplementation(
+            configuration["device"], configuration["baudrate"]
+        )
+        aes.probe = probe
+
+        return aes
+
+    def configure(self, instrument: Any, configuration: dict):
+        if "key" in configuration:
+            instrument.key = configuration["key"]
 
 
 @dataclass
@@ -31,7 +117,7 @@ class Motors:
     id: str = "mock-motors-driver:1"
 
     def __post_init__(self):
-        print("[Motors] Connection initiated.")
+        logger.info("[Motors] Connection initiated.")
 
     def set_position(self, **kwargs: dict[str, float]):
         """
@@ -134,6 +220,43 @@ class ElectricFieldProbe(Probe):
 
 
 @dataclass
+class CurrentProbe(Probe):
+    last_measurement: np.ndarray | None = None
+    noise_level: float = 1.0
+    gain: float = 1.0
+
+    def get_amplitude(self) -> np.ndarray:
+        if self.last_measurement is None:
+            raise ValueError("The probe has no new measurement ready.")
+
+        shape = self.last_measurement.shape
+        noise = np.random.normal(0, self.noise_level, size=shape)
+        noisy_measurement = self.gain * self.last_measurement + noise
+        self.last_measurement = None
+
+        return noisy_measurement
+
+
+@register_default_loader
+class CurrentProbeLoader(Loader):
+    name = "phileas-current_probe-phileas"
+    interfaces = set()
+
+    def initiate_connection(self, configuration: dict) -> Any:
+        probe = CurrentProbe()
+        if "noise_level" in configuration:
+            probe.noise_level = configuration["noise_level"]
+
+        if "gain" in configuration:
+            probe.gain = configuration["gain"]
+
+        return probe
+
+    def configure(self, instrument: Any, configuration: dict):
+        raise NotImplementedError()
+
+
+@dataclass
 class Oscilloscope:
     """
     Simulated 8-bit oscilloscope driver. It uses a
@@ -156,7 +279,7 @@ class Oscilloscope:
     fw_version: ClassVar[str] = "12.3"
 
     def __post_init__(self):
-        print("[Oscilloscope] Connection initiated.")
+        logger.info("[Oscilloscope] Connection initiated.")
 
     def get_measurement(self) -> np.ndarray:
         """Sampled and quantified value of the probe."""
@@ -196,6 +319,8 @@ class OscilloscopeLoader(Loader):
             motors: name of the motors that position the probe
          - random-probe:
             shape: tuple with the required probe output shape
+         - generic:
+            probe-name: Name of the probe bench instrument
         """
         probe = configuration["probe"]
         if probe == "electric-field-probe":
@@ -208,6 +333,16 @@ class OscilloscopeLoader(Loader):
             )
         elif probe == "random-probe":
             return Oscilloscope(probe=RandomProbe(shape=configuration["shape"]))
+        elif probe == "generic":
+            probe_name = configuration["probe-name"]
+            probe_instrument = self.instruments_factory.get_bench_instrument(probe_name)
+            if not isinstance(probe_instrument, Probe):
+                raise TypeError(
+                    "Oscilloscope generic expects a Probe, whereas "
+                    f"{probe_name} is a {type(probe_instrument).__name__}."
+                )
+
+            return Oscilloscope(probe=probe_instrument)
         else:
             raise ValueError(f"Unsupported probe type: {probe}")
 

@@ -38,6 +38,20 @@ Overview of phileas features
 Installation instructions
 :::::
 
+:::::{grid-item-card} {octicon}`light-bulb` Examples
+:text-align: center
+
+
+:::{button-ref} examples/index
+:click-parent:
+:outline:
+:color: primary
+:expand:
+
+Step-by-step examples
+:::::
+
+
 :::::{grid-item-card} {octicon}`tasklist` User guide
 :text-align: center
 

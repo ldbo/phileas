@@ -1,0 +1,6 @@
+# Examples
+
+:::{toctree}
+fi
+sca
+:::
