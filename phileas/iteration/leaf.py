@@ -455,8 +455,12 @@ class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
 
     seed: np.random.SeedSequence
 
-    #: The number of bytes required to generate a new integer. It is positive.
+    #: The number of bytes required to generate a new integer. It is positive or
+    #: null.
     _required_bytes: int
+
+    #: Amplitude of the generated interval.
+    _amplitude: int
 
     def __init__(self, tree: UniformBigIntegerRng) -> None:
         super().__init__(tree)
@@ -465,18 +469,21 @@ class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
             raise ValueError("Cannot iterate over a non seeded random leaf.")
 
         self.seed = np.random.SeedSequence(list(tree.seed.to_bytes()))
-        self._required_bytes = 1 + (self.tree.high - self.tree.low) // 256
+        self._amplitude = self.tree.high - self.tree.low
+        self._required_bytes = (self._amplitude.bit_length() + 7) // 8
 
     def _current_value(self) -> DataTree:
         generator = np.random.Generator(
             np.random.Philox(seed=self.seed, counter=[0, self.position, 0, 0])
         )
 
-        value = self.tree.high - self.tree.low + 1
-        while value > (self.tree.high - self.tree.low):
+        rejected = True
+        value = -1
+        while rejected:
             value = int.from_bytes(
                 generator.bytes(self._required_bytes), byteorder="little"
             )
+            rejected = value > self._amplitude
 
         return self.tree.low + value
 
