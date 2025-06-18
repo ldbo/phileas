@@ -2,7 +2,6 @@
 This module defines utility functions related to iteration.
 """
 
-import dataclasses
 from enum import Enum
 from types import NoneType
 from typing import TYPE_CHECKING, Iterable
@@ -16,8 +15,7 @@ from .base import (
     IterationTree,
     PseudoDataTree,
 )
-from .leaf import RandomIterationLeaf, Sequence
-from .random import Seed
+from .leaf import Sequence
 
 if TYPE_CHECKING:
     import pandas
@@ -85,20 +83,6 @@ def restrict_leaves_sizes(
             return Sequence([first, second, last])
 
     return tree.depth_first_modify(_restrict)
-
-
-def generate_seeds(tree: IterationTree, salt: DataTree | None = None) -> IterationTree:
-    """
-    Populate the seeds of the random leaves of the tree, using the given salt.
-    """
-
-    def _generate_seed(tree: IterationTree, path: ChildPath) -> IterationTree:
-        if isinstance(tree, RandomIterationLeaf):
-            return dataclasses.replace(tree, seed=Seed(path, salt))
-        else:
-            return tree
-
-    return tree.depth_first_modify(_generate_seed)
 
 
 def recursive_union(tree1: DataTree, tree2: DataTree) -> DataTree:
