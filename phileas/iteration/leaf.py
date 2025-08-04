@@ -396,7 +396,7 @@ class NumpyRNGIterator(TreeIterator[NumpyRNG]):
     and getting its first returned values.
     """
 
-    seed: list[int]
+    seed: np.random.SeedSequence
 
     def __init__(self, tree: NumpyRNG) -> None:
         super().__init__(tree)
@@ -404,11 +404,11 @@ class NumpyRNGIterator(TreeIterator[NumpyRNG]):
         if tree.seed is None:
             raise ValueError("Cannot iterate over a non seeded random leaf.")
 
-        self.seed = list(tree.seed.to_bytes())
+        self.seed = np.random.SeedSequence(list(tree.seed.to_bytes()))
 
     def _current_value(self) -> DataTree:
         generator = np.random.Generator(
-            np.random.PCG64(self.seed + list(f"%{self.position}".encode("utf-8")))
+            np.random.Philox(seed=self.seed, counter=[0, self.position, 0, 0])
         )
         random = self.tree.distribution(generator, *self.tree.args, **self.tree.kwargs)
 
@@ -453,7 +453,7 @@ class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
     bounds.
     """
 
-    seed: list[int]
+    seed: np.random.SeedSequence
 
     #: The number of bytes required to generate a new integer. It is positive.
     _required_bytes: int
@@ -464,12 +464,12 @@ class UniformBigIntegerRngIterator(TreeIterator[UniformBigIntegerRng]):
         if tree.seed is None:
             raise ValueError("Cannot iterate over a non seeded random leaf.")
 
-        self.seed = list(tree.seed.to_bytes())
+        self.seed = np.random.SeedSequence(list(tree.seed.to_bytes()))
         self._required_bytes = 1 + (self.tree.high - self.tree.low) // 256
 
     def _current_value(self) -> DataTree:
         generator = np.random.Generator(
-            np.random.PCG64(self.seed + list(f"%{self.position}".encode("utf-8")))
+            np.random.Philox(seed=self.seed, counter=[0, self.position, 0, 0])
         )
 
         value = self.tree.high - self.tree.low + 1
