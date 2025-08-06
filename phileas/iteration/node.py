@@ -12,10 +12,11 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from functools import reduce
 from itertools import chain
-from typing import Callable, Literal, Sequence, TypeVar
+from typing import Callable, ClassVar, Literal, Sequence, TypeVar
 
 import numpy as np
 
+from phileas import _rust
 from phileas.iteration import utility
 from phileas.iteration.random import RandomTree
 from phileas.logging import logger
@@ -947,6 +948,18 @@ class Shuffle(RandomTree, UnaryNode):
     """
     Unary node that shuffles the order of its child. In other words, it iterates
     over a random permutation of its children values.
+
+    Shuffling has a constant memory cost. The permutation of the order of the
+    child tree is obtained through the use of a cypher, which means that it is
+    entirely represented by a short key.
+
+    To shuffle a tree with size $n$, a symmetric cypher on $\\{ 0, \\dots ,
+    n-1 \\}$ is used. It is built with two components:
+
+    - a block cypher working on $2 \\lceil \\log_2 n / 2 \\rceil$-bit words. It consists
+      in a 3-round Feistel network which uses SipHash 1-3 as a round function.
+    - Cycle walking is used to restrict the message space to $\\{ 0, \\dots, n -
+      1 \\}$. The block cypher is iterated until its output is valid.
     """
 
     def __post_init__(self):
@@ -962,8 +975,15 @@ class Shuffle(RandomTree, UnaryNode):
 
 
 class ShuffleIterator(TreeIterator):
-    permutation: list[int]
     iterator: TreeIterator
+
+    #: Round keys of the generalized Feistel network. They are used for SipHash
+    #: 1-3, so they consist in two 64 bit integers. The size of this list must
+    #: be :py:attr:`rounds`.
+    keys: list[tuple[np.uint64, np.uint64]]
+
+    #: Number of rounds of the generalized Feistel network.
+    rounds: ClassVar[int] = 3
 
     def __init__(self, tree: Shuffle) -> None:
         super().__init__(tree)
@@ -971,14 +991,19 @@ class ShuffleIterator(TreeIterator):
         if tree.seed is None:
             raise ValueError("Cannot iterate over a non-seeded Shuffle node.")
 
-        seed = list(tree.seed.to_bytes())
-        generator = np.random.Generator(np.random.PCG64(seed))
-        assert self.size is not None
-        self.permutation = list(generator.permutation(self.size))
+        seed_sequence = np.random.SeedSequence(list(tree.seed.to_bytes()))
+        all_keys: Sequence[np.uint64] = seed_sequence.generate_state(
+            2 * self.rounds, dtype=np.uint64
+        )  # type: ignore[assignment]
+        self.keys = [(all_keys[i], all_keys[i + 1]) for i in range(self.rounds)]
+
         self.iterator = iter(tree.child)
 
+        assert self.size is not None
+
     def _current_value(self) -> DataTree:
-        return self.iterator[self.permutation[self.position]]
+        assert self.size is not None
+        return _rust.shuffle(self.position, self.size, self.keys)
 
 
 @dataclass(frozen=True)

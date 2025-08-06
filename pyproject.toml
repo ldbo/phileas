@@ -1,3 +1,25 @@
+[project]
+name = "phileas"
+description = ""
+version = "0.4"
+authors = [ { name="Louis Dubois", email="louis.dubois@ssi.gouv.fr" } ]
+readme = "Readme.md"
+requires_python = ">=3.9,<3.14"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "phileas._rust"
+features = ["pyo3/extension-module"]
+profile = "release"
+
 [tool.poetry]
 name = "phileas"
 version = "0.4"
@@ -19,6 +41,7 @@ jupyterlab = "^4.4.2"
 dacite = "^1.9.2"
 sympy = "^1.14.0"
 typing-extensions = "^4.14.0"
+maturin = "^1.9.3"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.18"
@@ -35,6 +58,7 @@ myst-nb = "^1.2.0"
 sphinx-copybutton = "^0.5.2"
 sphinx-design = "^0.6.1"
 jupytext = "^1.17.1"
+maturin-import-hook = "^0.3.0"
 
 [tool.poetry.extras]
 xarray = ["xarray"]
@@ -44,10 +68,6 @@ sympy = ["sympy"]
 
 [tool.poetry.scripts]
 phileas = 'phileas.__main__:main'
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
 
 [tool.isort]
 profile = "black"

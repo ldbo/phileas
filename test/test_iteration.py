@@ -1006,11 +1006,11 @@ class TestIteration(unittest.TestCase):
         iterated_list = list(tree)
         self.assertEqual(expected_list, iterated_list)
 
-    @given(st.integers(1, 10))
-    def test_shuffle_yields_a_permutation(self, size: int):
+    @given(st.integers(1, 10000), st.integers(0, 1000))
+    def test_shuffle_yields_a_permutation(self, size: int, salt: int):
         child = IntegerRange(start=0, end=size - 1)
         values = set(child)
-        shuffle = generate_seeds(Shuffle(child))
+        shuffle = generate_seeds(Shuffle(child), salt)
         shuffled_values = list(shuffle)
         hypothesis.note(f"Shuffled values: {shuffled_values}")
 

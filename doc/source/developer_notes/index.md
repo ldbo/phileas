@@ -12,8 +12,8 @@ poetry shell
 ```
 
 which will enable a virtual environment with the required development
-dependencies. It also installs [pre-commit hooks](https://pre-commit.com) that
-will run some code quality tools before each commit.
+dependencies. It also installs [pre-commit hooks](https://pre-commit.com),
+which runs some code quality tools before each commit.
 
 ## Tests
 
@@ -82,9 +82,42 @@ it is not in the pre-commit configuration. Rather, we recommend
    due to the `ruamel.yaml` issue;
  - skip verification with the ` --no-verify` flag of `git commit`.
 
+## Rust integration
+
+Phileas uses [maturin](https://www.maturin.rs/) to run Rust code from Python.
+The project is described in `/Cargo.toml`, the source files are stored in
+`/src/`, and the Python bindings are available in the `phileas._rust` module.
+You should declare typing stubs for the exposed Rust functions in
+`/phileas/_rust.pyi`.
+
+Upon modifying the Rust project, you should recompile it before using the Python
+code that uses it. This can be done with
+
+```sh
+poetry run maturin develop
+```
+
+which installs the up-to-date `_rust` module in the development virtual
+environment. Alternatively, you can enable a Python import hook that will make
+sure that the latest Rust code version is used, whenever you start a Python
+interpreter. You can do it with
+
+```sh
+poetry run python -m maturin_import_hook site install
+```
+
+However, note that it will induce a delay at each interpreter start. Thus, it
+might be a good idea to uninstall the hook when working on pure Python code,
+with
+
+```sh
+poetry run python -m maturin_import_hook site uninstall
+```
+
 ## CI
 
-`tox` is used to run code quality, coverage and tests for different Python versions. You can simply invoke it with
+`tox` is used to run code quality, coverage and tests for different Python
+versions. You can simply invoke it with
 
 ```
 tox

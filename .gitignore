@@ -19,3 +19,7 @@ __pycache__
 
 # Output files
 *.pdf
+
+# Rust output products
+/target/
+/phileas/_rust.*.so

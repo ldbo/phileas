@@ -3,4 +3,5 @@
 # Use: ./bump_version.sh a.b.c  bumps the version to a.b.c
 
 poetry version $1
+sed -i "s/^version = \".*\"/version = \""$1"\"/g" pyproject.toml
 sed -i "s/__version__ = \".*\"/__version__ = \""$1"\"/g" phileas/__init__.py
