@@ -114,6 +114,12 @@ with
 poetry run python -m maturin_import_hook site uninstall
 ```
 
+## Performance benchmark
+
+A performance benchmark is available by calling `python -m phileas benchmark`.
+It compares the iteration speed of different iteration trees. When implementing
+a new node or leaf, it is advised to add a corresponding test.
+
 ## CI
 
 `tox` is used to run code quality, coverage and tests for different Python

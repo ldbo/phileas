@@ -200,12 +200,20 @@ def configure_common_template_parser(
     parser.set_defaults(callback=generate_template)
 
 
+# Benchmark
+
+
+def benchmark():
+    from . import benchmark
+
+    benchmark.run()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Phileas CLI utility.")
     commands_parser = parser.add_subparsers(required=True)
 
     # List loaders
-
     list_loaders_parser = commands_parser.add_parser(
         "list-loaders",
         description="List the default loaders registered by a script.",
@@ -303,6 +311,12 @@ def main():
     )
     generate_script_parser.set_defaults(callback=generate_script)
     generate_script_parser.set_defaults(template_type=Template.script)
+
+    # Benchmark
+    benchmark_parser = commands_parser.add_parser(
+        "benchmark", description="Run a performance benchmark."
+    )
+    benchmark_parser.set_defaults(callback=benchmark)
 
     parsed_args = parser.parse_args()
     callback = parsed_args.callback
