@@ -8,12 +8,19 @@ installed, simply run
 ```sh
 poetry install
 poetry run pre-commit install
-poetry shell
 ```
 
-which will enable a virtual environment with the required development
+which will create a virtual environment with the required development
 dependencies. It also installs [pre-commit hooks](https://pre-commit.com),
 which runs some code quality tools before each commit.
+
+You can then enter the virtual environment with one of the following commands:
+
+```sh
+eval $(poetry env activate)              # For Bash/Zsh/Csh
+eval (poetry env activate)               # For Fish
+Invoke-Expression (poetry env activate)  # For Powershell
+```
 
 ## Tests
 
@@ -153,4 +160,4 @@ The documentation coverage can be obtained with
 sphinx-build -M coverage doc/source/ doc/coverage/
 ```
 
-It is then accessible in `/doc/coverage/`
+It is then accessible in `/doc/coverage/`.

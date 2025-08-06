@@ -1,15 +1,25 @@
 [project]
 name = "phileas"
-description = ""
+description = "A Python package for the reproducibility of hardware security experiments."
 version = "0.4"
-authors = [ { name="Louis Dubois", email="louis.dubois@ssi.gouv.fr" } ]
+authors = [ { name="Louis Dubois", email="ldbo@protonmail.com" } ]
 readme = "Readme.md"
-requires_python = ">=3.9,<3.14"
+requires-python = ">=3.9,<3.14"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Information Technology",
+    "Natural Language :: English",
+    "Topic :: Security",
 ]
+dynamic = [ "dependencies" ]
+
+[project.urls]
+repository = "https://github.com/ldbo/phileas"
+issues = "https://github.com/ldbo/phileas/issues"
 
 [build-system]
 requires = ["maturin>=1.9,<2.0"]
@@ -19,13 +29,6 @@ build-backend = "maturin"
 module-name = "phileas._rust"
 features = ["pyo3/extension-module"]
 profile = "release"
-
-[tool.poetry]
-name = "phileas"
-version = "0.4"
-description = ""
-authors = ["Louis Dubois <louis.dubois@ssi.gouv.fr>"]
-readme = "Readme.md"
 
 [tool.poetry.dependencies]
 python = "^3.9,<3.14"
@@ -61,13 +64,13 @@ sphinx-design = "^0.6.1"
 jupytext = "^1.17.1"
 maturin-import-hook = "^0.3.0"
 
-[tool.poetry.extras]
+[project.optional-dependencies]
 xarray = ["xarray"]
 pandas = ["pandas"]
 notebooks = ["matplotlib", "xarray", "pandas", "jupyterlab"]
 sympy = ["sympy"]
 
-[tool.poetry.scripts]
+[project.scripts]
 phileas = 'phileas.__main__:main'
 
 [tool.isort]
