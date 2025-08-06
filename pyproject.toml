@@ -42,6 +42,7 @@ dacite = "^1.9.2"
 sympy = "^1.14.0"
 typing-extensions = "^4.14.0"
 maturin = "^1.9.3"
+sphinx-math-dollar = "^1.2.1"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.18"
