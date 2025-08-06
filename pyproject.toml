@@ -12,9 +12,12 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Topic :: Security",
 ]
+license = "MIT"
+license-files = [ "license" ]
 dynamic = [ "dependencies" ]
 
 [project.urls]
