@@ -19,7 +19,7 @@ properly annotated to ease the data analysis stage.
 
 ## Installation
 
-Phileas supports Python 3.9 up to 3.13 versions.
+Phileas supports Python 3.9 up to 3.13, as well as PyPy.
 
 It is available in PyPI, so you can install it with
 
