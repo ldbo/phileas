@@ -76,3 +76,18 @@ imgmath_use_preview = True
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "pydata_sphinx_theme"
+html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/ldbo/phileas",
+            "icon": "fa-brands fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/phileas",
+            "icon": "fa-custom fa-pypi",
+            "type": "fontawesome",
+        },
+    ]
+}
