@@ -4,7 +4,7 @@ description = "A Python package for the reproducibility of hardware security exp
 version = "0.4"
 authors = [ { name="Louis Dubois", email="ldbo@protonmail.com" } ]
 readme = "Readme.md"
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.10,<3.14"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -34,7 +34,7 @@ features = ["pyo3/extension-module"]
 profile = "release"
 
 [tool.poetry.dependencies]
-python = "^3.9,<3.14"
+python = "^3.10,<3.14"
 graphviz = "^0.20.3"
 rich = "^14.0.0"
 ruamel-yaml = "^0.18.10"

@@ -43,7 +43,7 @@ tox
 
 Phileas only supports
 [currently maintained](https://devguide.python.org/versions/) Python versions.
-For now, it starts at version 3.9, and stops at version 3.13.
+For now, it starts at version 3.10, and stops at version 3.13.
 
 ### Adding dependencies
 

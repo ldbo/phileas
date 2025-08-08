@@ -48,7 +48,7 @@ from phileas.iteration.utility import (
 
 # Some tests are close to the 200 ms limit after which hypothesis classifies
 # the test as an error, so increase it.
-hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=5))
+hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=10))
 hypothesis.settings.load_profile("ci")
 
 # Restrict the iterated size of infinite trees

@@ -65,10 +65,8 @@ jobs:
           - python3.12
           - python3.11
           - python3.10
-          - python3.9
           - pypy3.11
           - pypy3.10
-          - pypy3.9
         os:
           - ubuntu-latest
           - macos-latest
