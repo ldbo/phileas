@@ -61,14 +61,14 @@ jobs:
       fail-fast: false
       matrix:
         env:
-          - "python3.13"
-          - "python3.12"
-          - "python3.11"
-          - "python3.10"
-          - "python3.9"
-          - "pypy3.11"
-          - "pypy3.10"
-          - "pypy3.9"
+          - python3.13
+          - python3.12
+          - python3.11
+          - python3.10
+          - python3.9
+          - pypy3.11
+          - pypy3.10
+          - pypy3.9
         os:
           - ubuntu-latest
           - macos-latest
@@ -83,7 +83,7 @@ jobs:
     - name: Install Graphviz
       uses: tlylt/install-graphviz@v1
     - name: Install Python
-      if: matrix.env != '3.13'
+      if: ${{ matrix.env != 'python3.13' }}
       run: uv python install --python-preference only-managed ${{ matrix.env }}
     - name: Setup test suite
       run: tox run -vv --notest --skip-missing-interpreters false
@@ -93,3 +93,28 @@ jobs:
       run: tox run --skip-pkg-install
       env:
         TOX_GH_MAJOR_MINOR: ${{ matrix.env }}
+    - name: Upload coverage artifact, if required
+      if: ${{ matrix.env == 'python3.13' && matrix.os == 'ubuntu-latest' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage
+        path: coverage.xml
+
+  publish-coverage:
+    name: Send coverage data to Coveralls
+    runs-on: ubuntu-latest
+    needs: [test-code]
+    if: ${{ always() }}
+    steps:
+    - name: Recover coverage artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage
+    - name: Send coverage data
+      if: ${{ success() }}
+      uses: coverallsapp/github-action@v2
+      with:
+        file: coverage.xml
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        parallel: false
+        debug: true

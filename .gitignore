@@ -6,8 +6,9 @@ __pycache__
 **/.ipynb_checkpoints/
 
 # CI
-.hypothesis
+/.hypothesis
 /.coverage
+/coverage.xml
 /htmlcov
 /.tox
 
