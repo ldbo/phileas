@@ -1,3 +1,12 @@
+[![GitHub License](https://img.shields.io/github/license/ldbo/phileas)](https://mit-license.org/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/phileas)](https://pypi.org/project/phileas/)
+[![GitHub Actions Tests Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/tests.yaml?label=tests)](https://github.com/ldbo/phileas/actions/workflows/tests.yaml)
+[![GitHub Actions Build Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/deployment.yaml?label=build)](https://github.com/ldbo/phileas/actions/workflows/deployment.yaml)
+[![Read the Docs](https://img.shields.io/readthedocs/phileas)](rtd.org/phileas)
+[![Tested with Hypothesis](https://img.shields.io/badge/hypothesis-tested-brightgreen.svg)](https://hypothesis.readthedocs.io/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+
 # Phileas - a Python library for scientific experiment automation
 
 Phileas is a Python library that eases the acquisition of hardware security
