@@ -79,6 +79,10 @@ phileas = 'phileas.__main__:main'
 [tool.isort]
 profile = "black"
 
+[tool.black]
+version = '25.1'
+target-version = ['py313']
+
 [tool.coverage.run]
 branch = true
 omit = [

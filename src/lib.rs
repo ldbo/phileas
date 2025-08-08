@@ -6,7 +6,6 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-
 /// Shuffle a `position` in a collection with size `bound`. The specific
 /// permutation that is used is represented by the given key.
 ///

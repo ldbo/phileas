@@ -94,7 +94,7 @@ def generate_template(
     dont_write: bool,
     no_explanation: bool,
     no_example: bool,
-    **kwargs
+    **kwargs,
 ) -> int:
     template_environment = jinja2.Environment(
         loader=jinja2.PackageLoader("phileas", "templates"),
@@ -122,7 +122,7 @@ def generate_script(
     bench: pathlib.Path | None,
     experiment: pathlib.Path | None,
     experiment_config_path: str | None,
-    **kwargs
+    **kwargs,
 ) -> int:
     template_data: dict[str, typing.Any] = {}
     if (
