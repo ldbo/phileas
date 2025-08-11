@@ -8,7 +8,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 
-# Phileas - a Python library for scientific experiment automation
+# Phileas - a Python library for hardware security experiments automation
 
 Phileas is a Python library that eases the acquisition of hardware security
 datasets. Its goal is to facilitate the setup of fault injection and
@@ -20,9 +20,7 @@ properly annotated to ease the data analysis stage.
 
 ## Installation
 
-Phileas supports Python 3.10 up to 3.13, as well as PyPy.
-
-It is available in PyPI, so you can install it with
+Phileas supports Python 3.10 up to 3.13, as well as PyPy. You can install it with `pip`:
 
 ```sh
 pip install phileas
@@ -30,8 +28,9 @@ pip install phileas
 
 ## Documentation
 
-You can build the documentation and serve it with
+The documentation is available in the
+[package documentation](https://phileas.readthedocs.io/en/latest/index.html).
 
-```sh
-poetry run sphinx-build doc/source/ doc/build/
-```
+## Acknowledgment
+
+This work has been supported by DGA and ANSSI.
