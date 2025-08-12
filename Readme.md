@@ -30,6 +30,15 @@ pip install phileas
 
 The documentation is available in the
 [package documentation](https://phileas.readthedocs.io/en/latest/index.html).
+## Contributing
+
+There are different ways you can contribute to Phileas:
+
+ - if you have *any question about how it works or how to use it*, you can [open a discussion](https://github.com/ldbo/phileas/discussions/new);
+ - if you have *found a bug* or want to *request a new feature*, you can [submit an issue](https://github.com/ldbo/phileas/issues/new);
+ - if you want to *add new features*, you can [submit pull requests](https://github.com/ldbo/phileas/pulls) targeting the `develop` branch.
+
+Have a look at the [contributing guide](https://github.com/ldbo/phileas/blob/develop/CONTRIBUTING.md) for more information about submitting issues and pull requests! In any case, please follow the [code of conduct](https://github.com/ldbo/phileas/blob/develop/CODE_OF_CONDUCT.md).
 
 ## Acknowledgment
 
