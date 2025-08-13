@@ -1,3 +1,4 @@
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![MIT License](https://img.shields.io/github/license/ldbo/phileas)](https://mit-license.org/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/phileas)](https://pypi.org/project/phileas/)
 [![GitHub Actions Tests Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/tests.yaml?label=tests)](https://github.com/ldbo/phileas/actions/workflows/tests.yaml)
