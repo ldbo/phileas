@@ -32,7 +32,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     "sphinx_math_dollar",
-    "sphinx.ext.imgmath",
+    "sphinx.ext.mathjax",
 ]
 templates_path = ["_templates"]
 
@@ -67,10 +67,6 @@ napoleon_google_docstring = True
 
 ## Todo
 todo_include_todos = True
-
-## imgmath
-imgmath_image_format = "svg"
-imgmath_use_preview = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
