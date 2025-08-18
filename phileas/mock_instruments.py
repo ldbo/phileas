@@ -20,83 +20,214 @@ from phileas.iteration.base import DataTree
 logger = logger.getChild(__name__)
 
 
-class SimulatedAESImplementation:
+@dataclass
+class SimulatedPRESENTImplementation:
     """
-    Simulation of an embedded AES implementation. It can be plugged to a probe,
-    in order to simulate SCA.
+    Simulation of an embedded `PRESENT
+    <https://iacr.org/archive/ches2007/47270450/47270450.pdf>`_ implementation.
+    It can be plugged to a probe, in order to simulate SCA.
     """
 
-    #: Path of the device used for the serial connection
+    #: Path of the device used for the serial connection.
     serial_device: Path
 
-    #: Serial connection baudrate
+    #: Serial connection baudrate.
     baudrate: int
 
     #: Current probe used to perform simulated SCA. If you want to use it,
     #: simply set this attribute.
-    probe: CurrentProbe | None
+    probe: CurrentProbe | None = None
 
-    #: Encryption key
+    #: Encryption key, must be :py:attr:`key_size` bits wide.
     _key: int | None = None
 
-    def __init__(self, serial_device: Path, baudrate: int) -> None:
-        self.serial_device = serial_device
-        self.baudrate = baudrate
+    #: Number of PRESENT rounds.
+    rounds: int = 32
+
+    #: Block size, in bits.
+    block_size: ClassVar[int] = 64
+
+    #: Key size, in bits.
+    key_size: ClassVar[int] = 80
+
+    #: Evaluation of the S-box.
+    s_box: ClassVar[list[int]] = [
+        0xC,
+        0x5,
+        0x6,
+        0xB,
+        0x9,
+        0x0,
+        0xA,
+        0xD,
+        0x3,
+        0xE,
+        0xF,
+        0x8,
+        0x4,
+        0x7,
+        0x1,
+        0x2,
+    ]
+
+    #: SNR of the hamming distance of the S-box, as seen from the measured
+    #: side-channel.
+    snr: float = 1
+
+    #: Number of sampling points per PRESENT round.
+    points_per_round: int = 20
+
+    def __post_init__(self) -> None:
         logger.info(
-            f"Connected to the AES DUT on {serial_device} with baudrate {baudrate}."
+            f"Connected to the PRESENT DUT on {self.serial_device} "
+            f"with baudrate {self.baudrate}."
         )
-        self._key = None
 
     @property
     def key(self) -> int | None:
+        """
+        Encryption key, must be :py:attr:`key_size` bits wide.
+        """
         return self._key
 
     @key.setter
     def key(self, value: int):
+        value = int(value)
+        if value.bit_length() > self.key_size:
+            raise ValueError(f"Key size must be {self.key_size} bits wide.")
+
         self._key = value
-        logger.info(f"AES DUT key set to {value}.")
+        logger.info(f"PRESENT DUT key set to {value}.")
 
-    def encrypt(self, plaintext: int) -> int:
+    def encrypt(self, block: int) -> int:
         """
-        Encrypt a plaintext. The :py:attr:`key` must be set before encryption.
+        Encrypt a 64-bit block. The :py:attr:`key` must be set before encryption.
         """
+        if self.key is None:
+            raise ValueError("The key must be set before encryption.")
+
+        hamming_distance = np.empty(self.rounds, dtype=np.float64)
+
+        # Encryption
+        key = self.key
+        for round_counter in range(1, self.rounds):
+            round_key = key >> (self.key_size - self.block_size)
+            block = self.add_round_key(round_key, block)
+            before_s_box = block
+            block = self.s_box_layer(block)
+            after_s_box = block
+            block = self.p_layer(block)
+            key = self.key_schedule(round_counter, key)
+
+            hamming_distance[round_counter - 1] = (
+                after_s_box ^ before_s_box
+            ).bit_count()
+
+        block = self.add_round_key(key >> 16, block)
+
+        # SCA simulations
+        time = np.linspace(0, 1, self.points_per_round + 20)[1:]
+        leakage_kernel = np.power(time[0] / time, 3)
+        leakages = (
+            leakage_kernel[np.newaxis, :]
+            * hamming_distance[:, np.newaxis]
+            / self.block_size
+        )
+
+        trace = leakages.flatten()
+        noise = np.random.normal(0, 1, trace.shape)
+
         if self.probe is not None:
-            self.probe.last_measurement = np.array([plaintext])
+            self.probe.last_measurement = trace + noise / self.snr
 
-        return 0
+        return block
 
-    def decrypt(self, cyphertext: int) -> int:
-        """
-        Decrypt a cyphertext. The :py:attr:`key` must be set before decryption.
-        """
-        if self.probe is not None:
-            self.probe.last_measurement = np.array([cyphertext])
+    # PRESENT internals
 
-        return 0
+    @classmethod
+    def add_round_key(cls, key: int, block: int) -> int:
+        return key ^ block
+
+    def s_box_layer(self, block: int) -> int:
+        s_block = 0
+        for nibble in range((self.block_size + 3) // 4):
+            s_block |= self.s_box[(block >> (nibble * 4)) & 0xF] << (nibble * 4)
+
+        return s_block
+
+    def p_layer(self, block: int) -> int:
+        p_block = 0
+        for position in range(self.block_size):
+            destination = (position % 4) * 16 + (position // 4)
+            bit_value = (block >> position) & 1
+            p_block |= bit_value << destination
+
+        return p_block
+
+    def key_schedule(self, round_counter: int, current_key: int) -> int:
+        # Rotate 61 bits left
+        key = ((current_key << 61) & ((1 << self.key_size) - 1)) + (
+            current_key >> (self.key_size - 61)
+        )
+
+        # Pass most significant nibble through the S-box
+        ms_pos = self.key_size - 4
+        ms_nibble = self.s_box[key >> ms_pos]
+        key = key & ((1 << ms_pos) - 1) | (ms_nibble << ms_pos)
+
+        # Add round counter
+        key ^= round_counter << 15
+
+        return key
 
 
 @register_default_loader
-class SimulatedAESImplementationLoader(Loader):
+class SimulatedPRESENTImplementationLoader(Loader):
     """
-    Loader of a simulated AES implementation, used for SCA.
+    Loader of a simulated PRESENT implementation, used for SCA.
     """
 
-    name = "phileas-mock_aes-phileas"
-    interfaces = {"aes"}
+    name = "phileas-mock_present-phileas"
+    interfaces = {"present-encryption"}
 
     def initiate_connection(self, configuration: dict) -> Any:
-        probe = self.instruments_factory.get_bench_instrument(configuration["probe"])
-        if not isinstance(probe, CurrentProbe):
-            raise TypeError("The simulated AES only supports current probes.")
-
-        aes = SimulatedAESImplementation(
+        """
+        Parameters:
+          - device (required): Path of the device used for the serial connection.
+          - baudrate (required): Serial connection baudrate.
+          - probe (optional): Name of the current probe to plug to the device,
+            for monitoring its current consumption.
+          - snr (optional): SNR of the hamming distance of the S-box, as seen
+            from the measured side-channel.
+          - points_per_round (optional): Number of sampling points per PRESENT
+            round.
+        """
+        present = SimulatedPRESENTImplementation(
             configuration["device"], configuration["baudrate"]
         )
-        aes.probe = probe
 
-        return aes
+        if "probe" in configuration:
+            probe = self.instruments_factory.get_bench_instrument(
+                configuration["probe"]
+            )
+            if not isinstance(probe, CurrentProbe):
+                raise TypeError("The simulated PRESENT only supports current probes.")
+
+            present.probe = probe
+
+        if "snr" in configuration:
+            present.snr = configuration["snr"]
+
+        if "points_per_round" in configuration:
+            present.points_per_round = configuration["points_per_round"]
+
+        return present
 
     def configure(self, instrument: Any, configuration: dict):
+        """
+        Parameters:
+          - key: Encryption key, a 80-bit integer.
+        """
         if "key" in configuration:
             instrument.key = configuration["key"]
 
