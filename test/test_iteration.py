@@ -44,6 +44,7 @@ from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
     data_tree_to_xarray_index,
     flatten_datatree,
+    iteration_tree_to_multiindex,
     iteration_tree_to_xarray_parameters,
 )
 
@@ -1441,3 +1442,16 @@ class TestIteration(unittest.TestCase):
                     return
 
                 da.loc[data_tree_to_xarray_index(data_tree, dims_name)] = True
+
+    @given(iterable_iteration_tree())
+    def test_iteration_tree_to_multiindex_raises_no_error(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        try:
+            iteration_tree_to_multiindex(tree)
+        except ValueError as e:
+            if e.args == ("Iteration tree that change shape are not supported.",):
+                return
+            raise
