@@ -1003,7 +1003,7 @@ class ShuffleIterator(TreeIterator):
 
     def _current_value(self) -> DataTree:
         assert self.size is not None
-        return _rust.shuffle(self.position, self.size, self.keys)
+        return self.iterator[_rust.shuffle(self.position, self.size, self.keys)]
 
 
 @dataclass(frozen=True)
