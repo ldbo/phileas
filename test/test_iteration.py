@@ -37,11 +37,12 @@ from phileas.iteration import (
     Union,
     Zip,
 )
-from phileas.iteration.base import ChildPath
+from phileas.iteration.base import ChildPath, IterationLeaf
 from phileas.iteration.leaf import PrimeRng, UniformBigIntegerRng
 from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
 from phileas.iteration.random import generate_seeds
 from phileas.iteration.utility import (
+    data_tree_to_xarray_index,
     flatten_datatree,
     iteration_tree_to_xarray_parameters,
 )
@@ -1377,3 +1378,66 @@ class TestIteration(unittest.TestCase):
         else:
             coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
             xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)
+
+    @given(iterable_iteration_tree())
+    def test_data_tree_to_xarray_index_raises_no_error(self, tree: IterationTree):
+        if isinstance(tree, (IterationLiteral, IterationLeaf)):
+            return
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
+            return
+        else:
+            _, dims_name, _ = iteration_tree_to_xarray_parameters(tree)
+
+            for data_tree in tree:
+                if not isinstance(next(iter(tree)), dict):
+                    return
+
+                data_tree_to_xarray_index(data_tree, dims_name)
+
+    @given(iterable_iteration_tree())
+    def test_data_tree_to_xarray_index_returns_valid_index(self, tree: IterationTree):
+        if isinstance(tree, (IterationLiteral, IterationLeaf)):
+            return
+
+        if not isinstance(next(iter(tree)), dict):
+            return
+
+        import numpy as np
+        import xarray as xr
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
+            return
+        else:
+            coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+            da = xr.DataArray(
+                data=np.full(dims_shape, False), coords=coords, dims=dims_name
+            )
+
+            for data_tree in tree:
+                if not isinstance(next(iter(tree)), dict):
+                    return
+
+                da.loc[data_tree_to_xarray_index(data_tree, dims_name)] = True
