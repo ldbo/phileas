@@ -404,7 +404,7 @@ class Oscilloscope:
     id: str = "mock-oscilloscope-driver:1"
 
     #: Bit width of the ADC.
-    width: ClassVar[int] = 8
+    width: int = 8
 
     #: Version of the oscilloscope firmware.
     fw_version: ClassVar[str] = "12.3"
@@ -444,6 +444,7 @@ class OscilloscopeLoader(Loader):
         """
         Parameters:
          - probe (required): Name of the simulated probe to use.
+         - width (optional): Bit width of the ADC, defaults to 8.
 
         Supported probes, and parameters:
          - electric-field-probe:
@@ -453,9 +454,11 @@ class OscilloscopeLoader(Loader):
          - generic:
             probe-name: Name of the probe bench instrument
         """
+        scope = None
+
         probe = configuration["probe"]
         if probe == "electric-field-probe":
-            return Oscilloscope(
+            scope = Oscilloscope(
                 probe=ElectricFieldProbe(
                     self.instruments_factory.get_bench_instrument(
                         configuration["motors"]
@@ -463,7 +466,7 @@ class OscilloscopeLoader(Loader):
                 ),
             )
         elif probe == "random-probe":
-            return Oscilloscope(probe=RandomProbe(shape=configuration["shape"]))
+            scope = Oscilloscope(probe=RandomProbe(shape=configuration["shape"]))
         elif probe == "generic":
             probe_name = configuration["probe-name"]
             probe_instrument = self.instruments_factory.get_bench_instrument(probe_name)
@@ -473,9 +476,14 @@ class OscilloscopeLoader(Loader):
                     f"{probe_name} is a {type(probe_instrument).__name__}."
                 )
 
-            return Oscilloscope(probe=probe_instrument)
+            scope = Oscilloscope(probe=probe_instrument)
         else:
             raise ValueError(f"Unsupported probe type: {probe}")
+
+        if "width" in configuration:
+            scope.width = configuration["width"]
+
+        return scope
 
     def configure(self, instrument: Oscilloscope, configuration: dict):
         """
