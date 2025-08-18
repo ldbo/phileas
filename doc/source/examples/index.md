@@ -1,6 +1,5 @@
 # Examples
 
 :::{toctree}
-fi
 sca
 :::

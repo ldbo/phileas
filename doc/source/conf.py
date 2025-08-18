@@ -60,7 +60,10 @@ coverage_modules = ["phileas"]
 coverage_statistics_to_stdout = True
 
 ## Intersphinx
-intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "xarray": ("https://docs.xarray.dev/en/stable/", None),
+}
 
 ## Napoleon
 napoleon_google_docstring = True
