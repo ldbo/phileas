@@ -1487,6 +1487,6 @@ class TestIteration(unittest.TestCase):
         try:
             iteration_tree_to_multiindex(tree)
         except ValueError as e:
-            if e.args == ("Iteration tree that change shape are not supported.",):
+            if e.args[0] == "Iteration tree that change shape are not supported.":
                 return
             raise
