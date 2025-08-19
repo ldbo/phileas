@@ -2,10 +2,12 @@ import dataclasses
 import datetime
 import itertools
 import math
+import os
 import unittest
 from typing import Literal
 
 import hypothesis
+import hypothesis.database as hdb
 import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
@@ -48,10 +50,22 @@ from phileas.iteration.utility import (
     iteration_tree_to_xarray_parameters,
 )
 
-# Some tests are close to the 200 ms limit after which hypothesis classifies
-# the test as an error, so increase it.
-hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=10))
-hypothesis.settings.load_profile("ci")
+# Hypothesis configuration
+local = hdb.DirectoryBasedExampleDatabase(".hypothesis/examples")
+shared = hdb.ReadOnlyDatabase(hdb.GitHubArtifactDatabase("ldbo", "phileas"))
+
+default_settings = hypothesis.settings.register_profile(
+    "default",
+    # Some tests are close to the 200 ms limit after which hypothesis classifies
+    # the test as an error, so increase it.
+    deadline=datetime.timedelta(seconds=10),
+)
+
+hypothesis.settings.register_profile("ci", parent=default_settings, database=local)
+hypothesis.settings.register_profile(
+    "dev", parent=default_settings, database=hdb.MultiplexedDatabase(local, shared)
+)
+hypothesis.settings.load_profile("ci" if os.environ.get("CI") else "dev")
 
 # Restrict the iterated size of infinite trees
 INFINITE_TREE_ITERATED_SIZE = 500
