@@ -35,6 +35,7 @@ jobs:
             target: s390x
           - runner: ubuntu-22.04
             target: ppc64le
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -139,23 +140,36 @@ jobs:
 
   sdist:
     runs-on: ubuntu-latest
+    outputs:
+      phileas-version: ${{ steps.get-version.outputs.phileas-version }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
+
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
           path: dist
 
-  release:
-    name: Release
-    runs-on: ubuntu-latest
+      - name: Get Phileas version
+        id: get-version
+        run: |
+          sdist_file=$(ls -1q dist/*.tar.gz | head -n1)
+          [[ -z "$sdist_file" ]] && { echo "No sdist tarball found"; exit 1; }
+          version=$(basename "$sdist_file" | sed -E 's/.*-([0-9].*)\.tar\.gz$/\1/')
+          echo "Phileas version is $version"
+          echo "phileas-version=$version" >> "$GITHUB_OUTPUT"
+
+  pre-release:
+    name: Create Github release and upload package on TestPyPI
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
     needs: [linux, musllinux, windows, macos, sdist]
     permissions:
       # Use to sign the release artifacts
@@ -164,8 +178,10 @@ jobs:
       contents: write
       # Used to generate artifact attestation
       attestations: write
+
     steps:
       - uses: actions/download-artifact@v4
+
       - name: Create a Github release and upload assets
         uses: softprops/action-gh-release@v2
         with:
@@ -178,12 +194,116 @@ jobs:
             # Phileas ${{ github.ref }} Release Notes
 
             ## Changelog
+
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'wheels-*/*'
+
+      - name: Publish to TestPyPI
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
+          MATURIN_REPOSITORY: testpypi
+        with:
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      - name: Wait for the package to be available on TestPyPI
+        env:
+          PHILEAS_VERSION: ${{ needs.sdist.outputs.phileas-version }}
+          MAX_ATTEMPTS: 60
+          SLEEP_S: 10
+        run: |
+          echo "Waiting for Phileas version $PHILEAS_VERSION on TestPyPI."
+          attempt=0
+          failure=1
+          until [ "$attempt" -eq "$MAX_ATTEMPTS" ]
+          do
+            ((attempt=attempt+1))
+            echo "Attempt #$attempt..."
+            exit_code=0
+            python -m pip install \
+              --dry-run --no-deps \
+              -i https://test.pypi.org/simple/ \
+              phileas-test=="$PHILEAS_VERSION" \
+              || exit_code=$?
+
+            if [ "$exit_code" -eq 0 ]; then
+              failure=0
+              break
+            fi
+
+            sleep $SLEEP_S
+          done
+
+          exit $failure
+
+  installation-tests:
+    name: Verify that the package properly installs on the different platforms
+    needs: [pre-release, sdist]
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+          - runner: windows-latest
+          - runner: macos-latest
+        python-version:
+          - "3.13"
+          - "3.12"
+          - "3.11"
+          - "3.10"
+          - "pypy3.11"
+          - "pypy3.10"
+
+    steps:
+    - name: Install Python version ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install phileas and check that it can be imported
+      shell: bash
+      env:
+        PHILEAS_VERSION: ${{ needs.sdist.outputs.phileas-version }}
+      run: |
+        python --version
+        python -m pip install \
+              -i https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple \
+              phileas-test==$PHILEAS_VERSION
+        python -c "import phileas; print(phileas.__version__)"
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [installation-tests]
+    permissions:
+      # Use to sign the release artifacts
+      id-token: write
+      # Used to upload release artifacts
+      contents: write
+      # Used to generate artifact attestation
+      attestations: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'wheels-*/*'
+
       - name: Publish to PyPI
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: PyO3/maturin-action@v1
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
