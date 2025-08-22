@@ -1385,6 +1385,25 @@ class TestIteration(unittest.TestCase):
         if isinstance(tree, (IterationLiteral, IterationLeaf)):
             return
 
+        if isinstance(tree, IterationMethod) and not isinstance(tree, CartesianProduct):
+            return
+
+        non_gridded = False
+
+        def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+            nonlocal non_gridded
+            if isinstance(tree, IterationMethod) and not isinstance(
+                tree, CartesianProduct
+            ):
+                non_gridded = True
+
+            return tree
+
+        tree.depth_first_modify(inspect)
+
+        if non_gridded:
+            return
+
         hypothesis.note(f"The iteration tree is {tree}")
         flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
         leaves: list[IterationTree | DataLiteral]
@@ -1412,7 +1431,23 @@ class TestIteration(unittest.TestCase):
         if isinstance(tree, (IterationLiteral, IterationLeaf)):
             return
 
-        if not isinstance(next(iter(tree)), dict):
+        if isinstance(tree, IterationMethod) and not isinstance(tree, CartesianProduct):
+            return
+
+        non_gridded = False
+
+        def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+            nonlocal non_gridded
+            if isinstance(tree, IterationMethod) and not isinstance(
+                tree, CartesianProduct
+            ):
+                non_gridded = True
+
+            return tree
+
+        tree.depth_first_modify(inspect)
+
+        if non_gridded:
             return
 
         import numpy as np

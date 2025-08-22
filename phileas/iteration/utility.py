@@ -199,6 +199,21 @@ def iteration_tree_to_xarray_parameters(
     >>>     ),
     >>>     coords=coords,
     >>> )
+
+    .. caution::
+
+       This function is tested against trees whose iteration methods are
+       cartesian products only, as they represent the coordinates of full
+       gridded datasets. You can use it on other kinds of trees, but then make
+       sure to verify that its behaves properly.
+
+    .. seealso::
+
+       :py:func:`~phileas.iteration.utility.data_tree_to_xarray_index` to index
+       an xarray container  built with this function.
+
+       :py:func:`~phileas.iteration.utility.iteration_tree_to_multiindex` if you
+       want to work with Pandas tabular datasets.
     """
     flattened_tree = flatten_datatree(tree.to_pseudo_data_tree())
     if isinstance(flattened_tree, dict):
@@ -248,6 +263,11 @@ def iteration_tree_to_multiindex(tree: IterationTree) -> "pandas.MultiIndex":
     Create a :py:class:`pandas.MultiIndex` that holds the values stored in an
     iteration tree. This method iterates over the whole tree in order to create
     the index. Thus, it requires the iterated trees to have all the same shape.
+
+    .. seealso::
+
+       :py:func:`~phileas.iteration.utility.iteration_tree_to_xarray_parameters`
+       if you want to work with xarray gridded datasets.
     """
     import pandas as pd
 
