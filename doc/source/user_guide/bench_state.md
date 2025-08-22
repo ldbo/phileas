@@ -146,7 +146,7 @@ bench:
 
 ```sh
 $ python -m phileas --bench bench.yaml --experiment experiment.yaml --script script.py
-version: '0.4'
+version: '0.5'
 instruments:
   simulated-motors:
     loader: phileas-mock_motors-phileas

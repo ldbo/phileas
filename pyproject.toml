@@ -1,7 +1,7 @@
 [project]
 name = "phileas"
 description = "A Python package for the reproducibility of hardware security experiments."
-version = "0.4"
+version = "0.5"
 authors = [ { name="Louis Dubois", email="ldbo@protonmail.com" } ]
 readme = "Readme.md"
 requires-python = ">=3.10,<3.14"
