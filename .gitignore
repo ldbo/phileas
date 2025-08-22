@@ -1,8 +1,26 @@
+# Python
 /dist/
-*.pdf
 __pycache__
-poetry.lock
-.hypothesis
+
+# Jupyter
+**/.ipynb_checkpoints/
+
+# CI
+/.hypothesis
 /.coverage
+/coverage.xml
 /htmlcov
 /.tox
+
+# Documentation
+/doc/build/
+/doc/coverage/
+/doc/jupyter_execute/
+/doc/source/api/_autosummary/
+
+# Output files
+*.pdf
+
+# Rust output products
+/target/
+/phileas/_rust.*.so

@@ -1,215 +1,175 @@
-# Configuration files and concepts
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![MIT License](https://img.shields.io/github/license/ldbo/phileas)](https://mit-license.org/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/phileas)](https://pypi.org/project/phileas/)
+[![GitHub Actions Tests Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/tests.yaml?label=tests)](https://github.com/ldbo/phileas/actions/workflows/tests.yaml)
+[![GitHub Actions Build Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/deployment.yaml?label=build)](https://github.com/ldbo/phileas/actions/workflows/deployment.yaml)
+[![Documentation](https://img.shields.io/readthedocs/phileas)](https://phileas.readthedocs.io/en/latest/)
+[![Code coverage](https://img.shields.io/coverallsCoverage/github/ldbo/phileas)](https://coveralls.io/github/ldbo/phileas)
+[![Tested with Hypothesis](https://img.shields.io/badge/hypothesis-tested-brightgreen.svg)](https://hypothesis.readthedocs.io/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-## Preliminary remark
 
-- I'm not sure it is ideal to actually separate the configuration in a bench and
-  an experiment, but I do it anyway for now. Using yaml inclusion seems more
-  flexible, allowing the configuration files organization to be tailored to the
-  project.
-- All the configuration files use the YAML file format. Besides the API used for
-  this tool (*e.g.* a bench instrument should have a `loader` field), any other
-  piece of information can be added in any configuration file, as long as it
-  remains a valid YAML file. For example, this allows to add a description to
-  an experiment, or the name of the maintainer of a bench.
+# Phileas - a Python library for hardware security experiments automation
 
-## Bench
+Phileas is a Python library that eases the acquisition of hardware security
+datasets. Its goal is to facilitate the setup of fault injection and
+side-channel analysis experiments, using simple YAML configuration files to
+describe both the experiment bench and the configurations of its instruments.
+This provides basic building blocks towards the repeatability of such
+experiments. Finally, it provides a transparent workflow that yields datasets
+properly annotated to ease the data analysis stage.
 
-- Is in its own configuration file, typically `bench.yaml`
-- Describes a bench, and in particular the list of instruments it holds. Those
-  are referred to as *bench instruments*.
-- Each instrument has a mandatory `loader` field, which specifies a loader name
-  that is used to initialize the instrument. Then, it can hold any number of
-  configuration fields, usually made to allow to connect to it, by
-  specifying *e.g.* its IPs, USB ports, *etc.*
-- For now, I think it should not contain information about how instruments are
-  interconnected, cf. the Preliminary remark
+## Installation
 
-## Experiment
+Phileas supports Python 3.10 up to 3.13, as well as PyPy. You can install it
+from:
 
-- Is in its own configuration file, typically `experiment.yaml`
-- Contains the description of an actual experiment that takes place, on
-  theoretically any bench that meets its requirements
-- Specifies a set of instruments to be used. Each so-called *experiment
-  instrument* requires an actual bench instrument having a given `interface`
-  (*e.g.* be an oscilloscope, a laser, a power supply) and optionally matching
-  some filters (*e.g.* have a 980 nm wavelength, have more than 4 channels).
-- Each instrument embeds its configuration, and how it is connected to other
-  instruments. Essentially, the experiment configuration file should allow
-  someone who does not have any information on the actual hardware that is on a
-  bench to replicate the experiment.
+```sh
+pip install phileas
+```
 
-### Connections
+## Getting started
 
- - The instruments in an experiment can be connected together, describing how
-   they are actually wired on the bench.
- - This is either done in the `connections` part of the configuration file, or
-   in the `connections` field of an instrument
- - Each of the connections represents a single two-ended "wire". `connections`
-   hold a list of dictionaries, with two fields: `from` and `to`
- - The ends of a connection can refer to
-   - an already existing instrument, using its name;
-   - a port, or sub-port, of an already existing instrument, using the dot as a
-     child operator. For example, "power_supply.ch1" refers to the "ch1" port
-     of the "power_supply" instrument.
-   - Alternatively, it can be anything else, typically for documentation
-     purpose.
- - Additionally, when specifying connections directly inside an instrument
-   `instrument`, relative naming can be used. Thus, `instrument.port` can be
-   replaced by `port`.
- - Each connection can have an `attribute` field, which is a string that is
-   not used yet.
+Phileas is meant to interact with real-life test and measurement instruments.
+Here, we demonstrate some of its features using simulated devices to acquire a
+side-channel attack dataset. This is a stripped version of
+[this example](https://phileas.readthedocs.io/en/latest/examples/sca.html) from
+the documentation. It requires that you install Phileas with the `xarray`
+dependency, with
 
-### Iteration through multiple configurations
+```sh
+pip install phileas[xarray]
+```
 
- - The experiment configuration file has reserved keywords that allow to
-   represent not a single literal value, but an iterable collections of values.
-   Thus, a single experiment configuration file can be iterated over - so it is
-   represented by an *iteration tree* (`iteration.IterationTree`) -, yielding
-   individual configurations, which are *data tree*
-   (`iteration.DataTree`) objects and represent the usual content of a YAML
-   file (*ie*. nested dictionaries and lists).
- - The supported custom iterable YAML data types are
-   - `!range`, which is parsed to a `iteration.NumericRange` (or a subclass),
-     and represents a continuous range of numbers;
-   - `!sequence` is parsed to a `iteration.Sequence`, and represents a
-     sequence of values;
-   - `!random` is parsed to a `iteration.NumpyRNG`, and represents a collection
-     of pseudo-random number.
- - To know the exact supported syntax for the custom YAML types, see the
-   `parsing` module, which is responsible for parsing a YAML file into an
-   `iteration.IterationTree`. A typical example is the following:
+Phileas relies on different files to describe and run an experiment. First,
+the *bench configuration file* contains the different instruments that are
+available on the bench, as well as connection information. It is a YAML file
+that you can store in `bench.yaml`:
 
- ```yaml
-position: !range
-  start: 0.5
-  end: 1.2
-  resolution: 0.01
-time: !sequence [0.15, 0.20, 0.45]
-power: !sequence
-  elements: [1, 2, 5]
-  default: 1
-voltage: !random
-  distribution: uniform
-  parameters:
-    low: 12
-    high: 13
-  size: 5
-  default: 0
- ```
+```yaml
+simulated_present_dut:
+  loader: phileas-mock_present-phileas
+  device: /dev/ttyUSB1
+  baudrate: 115200
+  probe: simulated_current_probe
 
- - In practice, you use an `ExperimentFactory` to parse the experiment
-   configuration file into an `iteration.IterationTree`, and then you can
-   modify it for non-simple experiments. To modify an iteration tree, you can
-   use the *path API* : the location of each node of an iteration tree is
-   represented by a path (`iteration.ChildPath`), which is the list of the
-   indices to use to access the node. The `iteration.IterationTree` *path API*
-   exposes different methods to access and modify a tree:
-     - `get` gives access to an internal node;
-     - `insert_child`, `remove_child` and `insert_transform` allow to modify the
-       structure of a tree;
-     - `replace_node` modifies the state of internal nodes.
- - Additionally, you can use an iteration tree (almost) as if it were a nested
-   list/dict, as it supports the `[]` operator. If you want it to actually be a
-   nested dict/list object, you can use its `default()` method, or
-   `to_pseudo_data_tree()`. This last method returns a nested collection of
-   lists and dictionaries, but keeps the iteration leaves of the iteration
-   tree.
- - Each of the iterable objects have an optional `default` value, which is the
-   default value used, when not iterating through it.
+simulated_current_probe:
+  loader: phileas-current_probe-phileas
 
-  - Given an iteration tree, you can then iterate over it, as if it were a
-    collection (*eg*. a `list`) of data trees. You can also use the resetable
-    2-way iterator returned by `iteration.IterationTree.__iter__()`, which is
-    accessible with the `iter()` function.
-  - The nodes of an iteration tree are `iteration.IterationMethod`, *ie*. they
-    specify in which order their children should be iterated over. The default
-    iteration node is `iteration.CartesianProduct`, which can be made `lazy` or
-    use a `snake` search, which allows to speed up the experiment. The
-    `iteration.Union` iteration method is also supported.
-  - An iteration tree can have a default value, accessible with
-    `iteration.IterationTree.default()`, which can be used to represent a safe
-    value for example.
+simulated_oscilloscope:
+  loader: phileas-mock_oscilloscope-phileas
+  probe: generic
+  probe-name: simulated_current_probe
+  width: 32
 
-# Python API
+```
 
-## Experiment factory
+Here, we declare that our bench is composed of three *bench instruments*: the
+embedded PRESENT implementation `simulated_present_dut` is connected to a
+current probe `simulated_current_probe`. An oscilloscope
+`simulated_oscilloscope` records the output of the probe.
 
-- The entry point is the `ExperimentFactory` class, which mainly allows to
-  instantiate bench and experiment instruments using the bench and experiment
-  configuration files.
-- It uses some `Loader`s to instantiate and connect to the bench instruments.
-  The experiment instrument are matched to bench instruments using their
-  `interface`, as well as `filters` restricting the set of suitable bench
-  instruments.
-- Those experiment instruments are then configured by the loader.
-- Finally, the factory allows the user to retrieve the set of bench and
-  experiment instruments.
+Then, the parameter space of the experiment is described in the *experiment
+configuration file*. It it easy to modify and share, and contains most of the
+scientific information of the data acquisition experiment. It is a YAML file
+supporting custom types, that you can call `experiment.yaml`:
 
-## Loader
+```yaml
+oscilloscope:
+  interface: oscilloscope
+  amplitude: 10
 
-- A `Loader` is used to instantiate an object to manipulate an actual hardware
-  instrument, using its `initiate_connection`. It can then configure it with
-  `configure`.
-- It has a `name` used by the `loader` field of bench instruments to specify how
-  they should be loaded.
-- The set of `interfaces` it supports is used to allow an experiment instrument
-  to specify which interface the bench instrument it is linked to should
-  `implement`.
+dut:
+  interface: present-encryption
+  key: !random
+    distribution: integers
+    parameters:
+      dtype: uint64
+      low: 0
+      high: 0x10000000000000000
+    size: 10
+  plaintext: !random
+    distribution: integers
+    parameters:
+      dtype: uint64
+      low: 0
+      high: 0x10000000000000000
+    size: 10
 
-# Typical project structure
+iteration: !range
+  start: 1
+  end: 5
+  resolution: 1
+```
 
-A project allowing to run an experiment will typically contain the following
-files:
- - `experiment.yaml`: experiment configuration file, which is written by the
-   experimenter, and is (*ideally*) bench-agnostic.
- - `bench.yaml`: bench configuration file, which is written by the person
-   configuring the bench.
- - `project_config.py`: defines a set of loaders, and use
-   `register_default_loader` to make them available for the experiment
-   factories to be created. It can be shared between different benches. In
-   order to help writing configuration files compatible with a set of
-   registered loaders, you can use `python -m phileas list-loaders`, whose
-   Markdown output can be redirected to a file if needed, with `python -m
-   phileas list-loaders > loaders_doc.md`.
+Here, we specify how to configure the oscilloscope, and all the parameters that
+the DUT will handle. Random keys and plaintexts are generated, and each pair of
+value is iterated over 5 times.
 
-# Logging
+We can then write a Python script that lets Phileas prepare the instruments and
+configure them, while we focus on data acquisition and storage.
 
- - Phileas has a dedicated logger, which uses the Python standard
-   [logging](https://docs.python.org/3/library/logging.html#module-logging)
-   module. The logger is called `"phileas"`.
+```python
+from pathlib import Path
 
-# Developer notes
+import numpy as np
+import xarray as xr
 
-- The repository depends on [Poetry](https://python-poetry.org/) for
-  dependencies and virtual environments management, as well as for packaging.
-  After installing Poetry, you have to create the development environment and
-  install the dependencies using `poetry install`. You can then enter the
-  development environment with `poetry shell`. You can leave it later with
-  `exit`. Alternatively, from outside of the development environment, you can
-  run commands using `poetry run <command>`. They will be run from inside the
-  development environment.
-- Adding dependencies can be done using `poetry add`. Before committing the
-  changes that have been made to `pyproject.toml`, you should rebuild the lock
-  file, using `poetry lock`. Then, `poetry.lock` should be committed as well.
-- Pre-commit hooks are managed by [pre-commmit](https://pre-commit.com/), which
-  is a developer dependency. To use them, call `pre-commit install` from the
-  project virtual environment.
+import phileas
+from phileas.iteration.utility import (
+    iteration_tree_to_xarray_parameters,
+    data_tree_to_xarray_index
+)
+from phileas.iteration.random import generate_seeds
 
-## Tests
+# Prepare the instruments
+factory = phileas.ExperimentFactory(Path("bench.yaml"), Path("experiment.yaml"))
+factory.initiate_connections()
+oscilloscope = factory.experiment_instruments["scope"]
+dut = factory.experiment_instruments["dut"]
 
-- Test files are stored in the `test` module. You can use `unittest` to
-  automatically discover and run them, using for example `python -m unittest`
-  from the root of the repository.
-- Some tests files implement property-based testing, using
-  [https://hypothesis.readthedocs.io](Hypothesis) for data generation.
-- Test `TestFunctional1`, and the associated `functional_1_
-  {config.py,experiment.yaml,bench.yaml}` configuration files are a good
-  example to start using Phileas.
-- You can use [`tox`](https://tox.wik) to run unit tests and check types for
-  different Python versions. The easiest way to set your environment up is to
-  use [`uv`](https://docs.astral.sh/uv) to manage Python versions, and `tox-uv`
-  to signal `tox` to use it. Once `uv` is installed, you can install it with
-  `uv tool install tox --with tox-uv`, and run everything with `tox`.
-- `tox` is configured using `tox.ini`. It runs the unit tests with `unittest`,
-  and check types with `mypy`, and then produces an HTML coverage report stored
-  at `./htmlcov` using `coverage`.
+configurations = generate_seeds(factory.experiment_config)
+
+# Prepare data storage
+coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(configurations)
+dut.key = 0
+dut.encrypt(0)
+trace = oscilloscope.get_measurement()
+coords["oscilloscope.sample"] = list(range(trace.shape[0]))
+dims_name.append("oscilloscope.sample")
+dims_shape.append(trace.shape[0])
+traces = xr.DataArray(coords=coords, dims=dims_name)
+
+for config in configurations:
+    factory.configure_experiment(config)
+
+    dut.encrypt(config["dut"]["plaintext"])
+    trace = oscilloscope.get_measurement()
+
+    index = data_tree_to_xarray_index(config, dims_name)
+    traces.loc[index] = trace
+```
+
+For more information about this example, see [the SCA example page](https://phileas.readthedocs.io/en/latest/index.html).
+It is taken from [the documentation](https://phileas.readthedocs.io/en/latest/index.html)
+which contains examples, user guides and the API description.
+
+## Contributing
+
+There are different ways you can contribute to Phileas:
+
+ - if you have *any question about how it works or how to use it*, you can
+   [open a discussion](https://github.com/ldbo/phileas/discussions/new);
+ - if you have *found a bug* or want to *request a new feature*, you can
+   [submit an issue](https://github.com/ldbo/phileas/issues/new);
+ - if you want to *add new features*, you can
+   [submit pull requests](https://github.com/ldbo/phileas/pulls) targeting the
+   `develop` branch.
+
+Have a look at the [contributing guide](https://github.com/ldbo/phileas/blob/develop/CONTRIBUTING.md)
+for more information about submitting issues and pull requests! In any case,
+please follow the [code of conduct](https://github.com/ldbo/phileas/blob/develop/CODE_OF_CONDUCT.md).
+
+## Acknowledgment
+
+This work has been supported by DGA and ANSSI.

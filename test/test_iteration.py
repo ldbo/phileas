@@ -1,20 +1,29 @@
 import dataclasses
 import datetime
+import itertools
+import math
+import os
 import unittest
-from itertools import product
+from typing import Literal
 
 import hypothesis
+import hypothesis.database as hdb
 import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
 
+import phileas
 from phileas import iteration
 from phileas.iteration import (
     Accumulator,
     CartesianProduct,
+    Configurations,
+    DataLiteral,
     DataTree,
     FunctionalTranform,
+    GeneratorWrapper,
     GeometricRange,
+    InfiniteLength,
     IntegerRange,
     IterationLiteral,
     IterationMethod,
@@ -23,16 +32,43 @@ from phileas.iteration import (
     LinearRange,
     NoDefaultPolicy,
     NumericRange,
+    NumpyRNG,
+    Seed,
     Sequence,
     Transform,
     Union,
+    Zip,
 )
-from phileas.iteration.leaf import NumpyRNG, Seed
+from phileas.iteration.base import ChildPath, IterationLeaf
+from phileas.iteration.leaf import PrimeRng, UniformBigIntegerRng
+from phileas.iteration.node import First, Lazify, Pick, Shuffle, UnaryNode
+from phileas.iteration.random import generate_seeds
+from phileas.iteration.utility import (
+    data_tree_to_xarray_index,
+    flatten_datatree,
+    iteration_tree_to_multiindex,
+    iteration_tree_to_xarray_parameters,
+)
 
-# Some tests are close to the 200 ms limit after which hypothesis classifies
-# the test as an error, so increase it.
-hypothesis.settings.register_profile("ci", deadline=datetime.timedelta(seconds=5))
-hypothesis.settings.load_profile("ci")
+# Hypothesis configuration
+local = hdb.DirectoryBasedExampleDatabase(".hypothesis/examples")
+shared = hdb.ReadOnlyDatabase(hdb.GitHubArtifactDatabase("ldbo", "phileas"))
+
+default_settings = hypothesis.settings.register_profile(
+    "default",
+    # Some tests are close to the 200 ms limit after which hypothesis classifies
+    # the test as an error, so increase it.
+    deadline=datetime.timedelta(seconds=10),
+)
+
+hypothesis.settings.register_profile("ci", parent=default_settings, database=local)
+hypothesis.settings.register_profile(
+    "dev", parent=default_settings, database=hdb.MultiplexedDatabase(local, shared)
+)
+hypothesis.settings.load_profile("ci" if os.environ.get("CI") else "dev")
+
+# Restrict the iterated size of infinite trees
+INFINITE_TREE_ITERATED_SIZE = 500
 
 ### Hypothesis strategies ###
 
@@ -86,11 +122,12 @@ def geometric_range(draw):
 
 @st.composite
 def integer_range(draw):
-    start, end = draw(st.integers(-3, 3)), draw(st.integers(-3, 3))
+    start = draw(st.integers(-3, 3))
+    end = draw(st.one_of(st.just(math.inf), st.just(-math.inf), st.integers(-3, 3)))
     if start == end:
-        return IntegerRange(start, end, default_value=1)
+        return IntegerRange(start, end, step=0, default_value=1)
     else:
-        return IntegerRange(start, end, step=draw(st.integers(2, 3)), default_value=1)
+        return IntegerRange(start, end, step=draw(st.integers(1, 3)), default_value=1)
 
 
 @st.composite
@@ -102,7 +139,7 @@ def sequence(draw):
 @st.composite
 def random_leaf(draw):
     seed = Seed([], draw(data_tree))
-    size = draw(st.integers(1, 3))
+    size = draw(st.one_of(st.none(), st.integers(1, 3)))
     default = draw(st.one_of(st.none(), data_tree))
     return NumpyRNG(
         seed=seed,
@@ -110,6 +147,29 @@ def random_leaf(draw):
         distribution=np.random.Generator.uniform,
         default_value=default,
     )
+
+
+@st.composite
+def random_big_integer_leaf(draw) -> UniformBigIntegerRng:
+    seed = Seed([], draw(data_tree))
+    size = draw(st.integers(1, 3))
+    low = draw(st.integers(0, 3))
+    high = low + draw(st.integers(0, 3))
+    default = draw(st.one_of(st.none(), data_tree))
+
+    return UniformBigIntegerRng(
+        seed=seed,
+        low=low,
+        high=high,
+        size=size,
+        default_value=default,
+    )
+
+
+@st.composite
+def generator_wrapper(draw):
+    size = draw(st.integers(1, 3))
+    return GeneratorWrapper(lambda: iter(range(size)), size=size)
 
 
 iteration_leaf = st.one_of(
@@ -120,6 +180,8 @@ iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    random_big_integer_leaf(),
+    generator_wrapper(),
 )
 
 iterable_iteration_leaf = st.one_of(
@@ -129,20 +191,145 @@ iterable_iteration_leaf = st.one_of(
     integer_range(),
     sequence(),
     random_leaf(),
+    random_big_integer_leaf(),
+    generator_wrapper(),
 )
 
 ## Iteration nodes ##
 
 
 @st.composite
-def iteration_tree_node(draw, children: st.SearchStrategy) -> st.SearchStrategy:
-    Node = draw(st.sampled_from([CartesianProduct, Union]))
-    children = draw(
-        st.lists(children, min_size=1, max_size=4)
-        | st.dictionaries(data_literal, children, min_size=1, max_size=4)
+def iteration_tree_node(draw, children_st: st.SearchStrategy) -> IterationTree:
+    if draw(st.booleans()):
+        child = draw(children_st)
+        return unary_tree_node(draw, child)
+    else:
+        children = draw(
+            st.lists(children_st, min_size=1, max_size=4)
+            | st.dictionaries(data_literal, children_st, min_size=1, max_size=4)
+        )
+        return iteration_method_node(draw, children)
+
+
+def unary_tree_node(draw, child: IterationTree) -> IterationTree:
+    types: list[type[UnaryNode]] = [IdTransform, First]
+    try:
+        if child.safe_len() is not None:
+            types.append(Shuffle)
+    except TypeError:  # Occurs for NumericRange
+        pass
+
+    Node = draw(st.sampled_from(types))
+    if Node == First:
+        return Node(child, draw(st.one_of(st.none(), st.integers(1, 3))))
+
+    return Node(child)
+
+
+def cartesian_product(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> CartesianProduct:
+    return CartesianProduct(children, lazy=lazy)
+
+
+def union(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    presets: list[str | None] = ["first"]
+    if isinstance(children, dict):
+        presets.append(None)
+    preset = draw(st.sampled_from(presets))
+
+    common_presets = [False]
+    if preset == "first":
+        common_presets.append(True)
+    common_preset = draw(st.sampled_from(common_presets))
+
+    children_list = children
+    if not isinstance(children, list):
+        children_list = list(children.values())
+    assert isinstance(children_list, list)
+
+    resets: list[Literal["first"] | Literal["last"] | None] = ["first"]
+    if isinstance(children, dict):
+        resets.append(None)
+    try:
+        if all(child.safe_len() is not None for child in children_list):
+            resets.append("last")
+    except TypeError:  # This happens with NumericRange leaves
+        pass
+    reset = draw(st.sampled_from(resets))
+
+    return Union(
+        children, lazy=lazy, preset=preset, common_preset=common_preset, reset=reset
     )
 
-    return Node(children, lazy=False)
+
+def zip_node(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> Zip:
+    stops_ats = ["shortest"]
+    if isinstance(children, dict):
+        stops_ats.append("longest")
+    stops_at = draw(st.sampled_from(stops_ats))
+    ignore_fixed = draw(st.booleans())
+
+    return Zip(children, lazy=lazy, stops_at=stops_at, ignore_fixed=ignore_fixed)
+
+
+def pick(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    return Pick(children, lazy=lazy)
+
+
+def configurations(
+    draw, children: dict[Key, IterationTree] | list[IterationTree], lazy: bool
+) -> IterationMethod:
+    assert isinstance(children, dict)
+
+    move_up = False
+    insert_name = False
+    if all(
+        isinstance(c, IterationMethod)
+        and not isinstance(c, Configurations)
+        and isinstance(c.children, dict)
+        for c in children.values()
+    ):
+        move_up = draw(st.booleans())
+
+        if move_up:
+            insert_name = False
+        else:
+            insert_name = draw(st.booleans())
+
+    default_child = draw(st.sampled_from(list(children.keys())))
+
+    return Configurations(
+        children,
+        lazy=False,
+        move_up=move_up,
+        insert_name=insert_name,
+        default_configuration=default_child,
+    )
+
+
+def iteration_method_node(
+    draw, children: dict[Key, IterationTree] | list[IterationTree]
+) -> IterationTree:
+    node_factories = [
+        cartesian_product,
+        union,
+        pick,
+        zip_node,
+    ]
+    lazy = False
+    if isinstance(children, dict):
+        node_factories.append(configurations)
+        lazy = draw(st.booleans())
+
+    node_factory = draw(st.sampled_from(node_factories))
+    return node_factory(draw, children, lazy)
 
 
 class IdTransform(Transform):
@@ -154,13 +341,28 @@ def transform(child: st.SearchStrategy):
     return st.builds(IdTransform, child)
 
 
-iteration_tree = st.recursive(
+iteration_tree_with_likely_config_root = st.recursive(
     iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
     max_leaves=8,
 )
 
-iterable_iteration_tree = st.recursive(
+
+@st.composite
+def iteration_tree(draw) -> st.SearchStrategy:
+    tree = draw(iteration_tree_with_likely_config_root)
+
+    if isinstance(tree, Configurations) and tree.move_up:
+        Node = draw(st.sampled_from([CartesianProduct, Union]))
+        children = {"config": tree}
+        for _ in range(draw(st.integers(min_value=0, max_value=3))):
+            children[draw(key)] = draw(iteration_tree())
+        return Node(children, lazy=False)
+
+    return draw(st.just(tree))
+
+
+iterable_iteration_tree_with_likely_config_root = st.recursive(
     iterable_iteration_leaf,
     lambda children: iteration_tree_node(children) | transform(children),
     max_leaves=8,
@@ -168,13 +370,45 @@ iterable_iteration_tree = st.recursive(
 
 
 @st.composite
+def iterable_iteration_tree(draw):
+    tree = draw(
+        iterable_iteration_tree_with_likely_config_root.filter(
+            lambda tree: not isinstance(tree, Configurations) or not tree.move_up
+        )
+    )
+    return generate_seeds(tree)
+
+
+@st.composite
 def iterable_iteration_tree_and_index(draw):
-    tree = draw(iterable_iteration_tree)
-    index = draw(st.integers(min_value=0, max_value=len(tree) - 1))
+    tree = draw(iterable_iteration_tree())
+    size = tree.safe_len()
+    if size is None:
+        size = INFINITE_TREE_ITERATED_SIZE
+
+    index = draw(st.integers(min_value=0, max_value=size - 1))
     return tree, index
 
 
 ### Tests ###
+
+
+def is_lazy(tree: IterationTree) -> bool:
+    lazy = False
+
+    def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+        nonlocal lazy
+        if isinstance(tree, IterationMethod) and tree.lazy:
+            lazy = True
+
+        if isinstance(tree, Lazify):
+            lazy = True
+
+        return tree
+
+    tree.depth_first_modify(inspect)
+
+    return lazy
 
 
 class TestIteration(unittest.TestCase):
@@ -216,16 +450,106 @@ class TestIteration(unittest.TestCase):
     def test_sequence_iteration(self, sequence: Sequence):
         self.assertEqual(list(sequence), sequence.elements)
 
+    @given(st.lists(data_literal, max_size=10))
+    def test_generator_wrapper_finite(self, elements: list[DataLiteral]):
+        def generator_factory():
+            return (e for e in elements)
+
+        tree = GeneratorWrapper(generator_factory, size=len(elements))
+        self.assertEqual(list(tree), elements)
+
+    @given(st.integers(min_value=0, max_value=10))
+    def test_generator_wrapper_infinite(self, size: int):
+        def generator_factory():
+            return (e for e in itertools.count())
+
+        tree = GeneratorWrapper(generator_factory, size=size)
+        self.assertEqual(list(tree), list(range(size)))
+
+    @given(
+        st.integers(min_value=0, max_value=10),
+        st.one_of(st.none(), st.integers(min_value=1, max_value=10)),
+    )
+    def test_generator_wrapper_too_short(
+        self, generator_size: int, tree_additional_size: int | None
+    ):
+        def generator_factory():
+            return (e for e in range(generator_size))
+
+        tree_size = (
+            None
+            if tree_additional_size is None
+            else generator_size + tree_additional_size
+        )
+        tree = GeneratorWrapper(generator_factory, size=tree_size)
+
+        with self.assertRaises(ValueError):
+            list(iter(tree))
+
+    @given(
+        st.integers(min_value=-512, max_value=512),
+        st.integers(min_value=0, max_value=255),
+        st.integers(min_value=0, max_value=10),
+    )
+    def test_uniform_integer_rng_bounds(self, low: int, delta: int, salt: int):
+        rng = generate_seeds(UniformBigIntegerRng(low=low, high=low + delta), salt=salt)
+        values: list[int] = list(itertools.islice(rng, 100))  # type: ignore[assignment,arg-type]
+        assert all(isinstance(v, int) for v in values)
+
+        hypothesis.note(f"Generated values: {values}")
+        min_values = min(values)
+        max_values = max(values)
+
+        self.assertGreaterEqual(min_values, low)
+        self.assertLessEqual(max_values, low + delta)
+
+    def test_prime_number_rng_no_prime(self):
+        leaf = generate_seeds(PrimeRng(low=114, high=126))
+        with self.assertRaises(ValueError):
+            iter(leaf)
+
+    @given(st.integers(0, 100), st.integers(0, 100))
+    def test_prime_number_rng_valid(self, size: int, salt: int):
+        leaf = generate_seeds(PrimeRng(low=100, high=200), salt=salt)
+        generated_primes = list(itertools.islice(leaf, size))
+        formatted_list = "\n".join(f" - {s}" for s in generated_primes)
+        hypothesis.note(f"Generated primes: \n{formatted_list}")
+        prime_numbers = {
+            101,
+            103,
+            107,
+            109,
+            113,
+            127,
+            131,
+            137,
+            139,
+            149,
+            151,
+            157,
+            163,
+            167,
+            173,
+            179,
+            181,
+            191,
+            193,
+            197,
+            199,
+            211,
+        }
+        self.assertLessEqual(set(generated_primes), prime_numbers)
+
     ## Iteration nodes ##
 
-    @given(iteration_tree)
+    @given(iteration_tree())
     def test_iteration_tree_generation(self, tree: IterationTree):
         """
         This test is voluntarily left empty, in order to test tree strategies.
         """
         del tree
 
-    @given(iterable_iteration_tree, st.integers(1, 3))
+    @given(iterable_iteration_tree(), st.integers(1, 3))
     def test_reverse_changes_forward(self, tree: IterationTree, reverses: int):
         iterator = iter(tree)
         for _ in range(reverses):
@@ -233,24 +557,44 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterator.is_forward(), reverses % 2 == 0)
 
-    @given(iterable_iteration_tree)
-    def test_len_consistent_with_iterate(self, tree: IterationTree):
+    @given(iterable_iteration_tree())
+    def test_len_consistent_with_iterate_finite(self, tree: IterationTree):
         try:
             n = len(tree)
             formatted_list = "\n".join(f" - {s}" for s in tree)
             hypothesis.note(f"The iterated list is \n{formatted_list}")
             self.assertEqual(n, len(list(tree)))
-        except TypeError:
+        except InfiniteLength:
             return
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree(), st.integers(min_value=0, max_value=1000))
+    def test_infinite_tree_length_is_unbound(
+        self, tree: IterationTree, tested_length: int
+    ):
+        if tree.safe_len() is not None:
+            return
+
+        it = iter(tree)
+        for _ in range(tested_length):
+            next(it)
+
+    @given(iterable_iteration_tree())
     def test_exhausted_iterator_is_exhausted(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
         iterator = iter(tree)
         _ = list(iterator)
         self.assertEqual(list(iterator), [])
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_reversible_iterator(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
+        if is_lazy(tree):
+            return
+
         iterator = iter(tree)
 
         forward = list(iterator)
@@ -264,7 +608,7 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(forward, backward)
 
-    @given(iterable_iteration_tree)
+    @given(iterable_iteration_tree())
     def test_reverse_without_reset_is_empty(self, tree: IterationTree):
         iterator = iter(tree)
         iterator.reverse()
@@ -275,6 +619,9 @@ class TestIteration(unittest.TestCase):
     def test_reverse_partial_iteration(self, tree_index: tuple[IterationTree, int]):
         tree, index = tree_index
         iterator = iter(tree)
+
+        if is_lazy(tree):
+            return
 
         if index == 0:
             return
@@ -289,18 +636,30 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(previous, previous_after_reverse)
 
-    @given(iterable_iteration_tree, st.booleans())
+    @given(iterable_iteration_tree(), st.booleans())
     def test_same_iteration_after_reset(self, tree: IterationTree, reverse: bool):
+        if reverse and tree.safe_len() is None:
+            return
+
+        if is_lazy(tree):
+            return
+
         iterator = iter(tree)
         if reverse:
             iterator.reverse()
             iterator.reset()
 
-        l_before_reset = list(iterator)
+        size = tree.safe_len()
+        if size is None:
+            size = INFINITE_TREE_ITERATED_SIZE
+
+        l_before_reset = list(itertools.islice(iterator, size))
         iterator.reset()
-        l_after_reset = list(iterator)
+        l_after_reset = list(itertools.islice(iterator, size))
 
         self.assertEqual(l_before_reset, l_after_reset)
+
+    ## Iteration methods ##
 
     @given(st.lists(st.integers(min_value=2, max_value=3), min_size=1, max_size=5))
     def test_cartesian_product_forward_lazy_iteration(self, sizes: list[int]):
@@ -337,7 +696,7 @@ class TestIteration(unittest.TestCase):
         formatted_list = "\n".join(f" - {s}" for s in iterated_list)
         hypothesis.note(f"Iterated list:\n{formatted_list}")
 
-        expected_list = list(map(list, product(*children)))
+        expected_list = list(map(list, itertools.product(*children)))
         formatted_list = "\n".join(f" - {s}" for s in expected_list)
         hypothesis.note(f"Expected list:\n{formatted_list}")
 
@@ -407,33 +766,38 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    @given(
-        st.lists(
-            st.dictionaries(
-                st.integers(min_value=0, max_value=4),
-                st.text(max_size=2),
-                min_size=1,
-                max_size=5,
-            ),
-            min_size=1,
-            max_size=5,
+    def test_cartesian_product_infinite_children_explicit(self):
+        tree = generate_seeds(
+            CartesianProduct(
+                [
+                    Sequence([1, 2]),
+                    IntegerRange(start=0, end=math.inf),
+                    Sequence([1, 2]),
+                    IntegerRange(start=0, end=math.inf),
+                    Sequence(["a", "b"]),
+                    Sequence([True, False]),
+                ]
+            )
         )
-    )
-    def test_accumulating_transform(self, dicts: list[dict[int, str]]):
-        nac_tree = Sequence(dicts)  # type: ignore[arg-type]
-        ac_nac_list = []
-        ac_data_tree: dict[int, str] = {}
-        for data_tree in nac_tree:
-            ac_data_tree |= data_tree  # type: ignore[arg-type]
-            ac_nac_list.append(ac_data_tree.copy())
 
-        hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
+        iterated_values = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_values = list(itertools.islice(tree, 10))
 
-        ac_tree = Accumulator(Sequence(dicts))  # type: ignore[arg-type]
-        ac_list = list(ac_tree)
-        hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
+        expected_values = [
+            [1, 0, 1, 0, "a", True],
+            [1, 0, 1, 0, "a", False],
+            [1, 0, 1, 0, "b", True],
+            [1, 0, 1, 0, "b", False],
+            [1, 0, 1, 1, "a", True],
+            [1, 0, 1, 1, "a", False],
+            [1, 0, 1, 1, "b", True],
+            [1, 0, 1, 1, "b", False],
+            [1, 0, 1, 2, "a", True],
+            [1, 0, 1, 2, "a", False],
+        ]
 
-        self.assertEqual(ac_list, ac_nac_list)
+        self.assertEqual(iterated_values, expected_values)
 
     @given(
         st.dictionaries(key, sequence(), min_size=1, max_size=5),
@@ -447,9 +811,7 @@ class TestIteration(unittest.TestCase):
         hypothesis.note("Non lazy list: \n" + "\n".join(map(str, non_lazy_list)))
 
         acc_lazy_list = list(
-            tree.replace_node([], type(tree), lazy=True).insert_transform(
-                [], Accumulator
-            )
+            tree.replace_node([], type(tree), lazy=True).insert_unary([], Accumulator)
         )
         hypothesis.note(
             "Accumulated lazy list: \n" + "\n".join(map(str, acc_lazy_list))
@@ -493,22 +855,124 @@ class TestIteration(unittest.TestCase):
 
         self.assertEqual(iterated_list, expected_list)
 
-    def test_union_iteration(self):
+    def test_union_iteration_finite(self):
         u = Union(
             {
                 0: IntegerRange(1, 2, default_value=10),
                 1: IntegerRange(1, 2, default_value=10),
-                2: IntegerRange(1, 2),
+                2: IntegerRange(1, 2, default_value=10),
             },
+            preset="default",
+            reset="default",
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10, 2: 1},
-            {0: 2, 1: 10, 2: 1},
-            {0: 10, 1: 1, 2: 1},
-            {0: 10, 1: 2, 2: 1},
+            {0: 1, 1: 10, 2: 10},
+            {0: 2, 1: 10, 2: 10},
+            {0: 10, 1: 1, 2: 10},
+            {0: 10, 1: 2, 2: 10},
             {0: 10, 1: 10, 2: 1},
             {0: 10, 1: 10, 2: 2},
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_iteration_infinite_last(self):
+        tree = generate_seeds(
+            Union(
+                [
+                    Sequence([1, 2]),
+                    Sequence([1, 2]),
+                    IntegerRange(start=0, end=math.inf),
+                ]
+            )
+        )
+
+        iterated_list = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_list = list(itertools.islice(tree, 10))
+
+        expected_list = [
+            [1, 1, 0],
+            [2, 1, 0],
+            [1, 1, 0],
+            [1, 2, 0],
+            [1, 1, 0],
+            [1, 1, 1],
+            [1, 1, 2],
+            [1, 1, 3],
+            [1, 1, 4],
+            [1, 1, 5],
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    def test_union_iteration_infinite_inner(self):
+        tree = generate_seeds(
+            Union(
+                [
+                    Sequence([1, 2]),
+                    Sequence([1, 2], default_value=3),
+                    IntegerRange(start=0, end=math.inf),
+                    Sequence([1, 2], default_value=3),
+                ]
+            )
+        )
+
+        iterated_list = []
+        with self.assertLogs(phileas.logger, level="WARNING"):
+            iterated_list = list(itertools.islice(tree, 10))
+
+        expected_list = [
+            [1, 1, 0, 1],
+            [2, 1, 0, 1],
+            [1, 1, 0, 1],
+            [1, 2, 0, 1],
+            [1, 1, 0, 1],
+            [1, 1, 1, 1],
+            [1, 1, 2, 1],
+            [1, 1, 3, 1],
+            [1, 1, 4, 1],
+            [1, 1, 5, 1],
+        ]
+
+        self.assertEqual(iterated_list, expected_list)
+
+    @given(st.lists(iterable_iteration_tree_and_index(), min_size=1, max_size=3))
+    def test_zip_shortest(self, tree_index_list: list[tuple[IterationTree, int]]):
+        children = [tree for (tree, _) in tree_index_list]
+        tree = Zip(children=children, stops_at="shortest", ignore_fixed=False)
+
+        if len(tree.configurations) != 0:
+            return
+
+        if tree.safe_len() is not None:
+            iterated_list = list(tree)
+            hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
+            expected_list = [list(v) for v in zip(*children)]
+            hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
+            self.assertEqual(iterated_list, expected_list)
+        else:
+            indices = [index for (_, index) in tree_index_list]
+            index = max(indices)
+            iterated_list = list(itertools.islice(tree, index))
+            hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
+            expected_list = list(
+                itertools.islice((list(v) for v in zip(*children)), index)
+            )
+            hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
+            self.assertEqual(iterated_list, expected_list)
+
+    def test_zip_longest(self):
+        tree = Zip(
+            {"a": Sequence([1, 2, 3]), "b": Sequence([1, 2])}, stops_at="longest"
+        )
+
+        iterated_list = list(tree)
+        expected_list = [
+            {"a": 1, "b": 1},
+            {"a": 2, "b": 2},
+            {"a": 3},
         ]
 
         self.assertEqual(iterated_list, expected_list)
@@ -518,21 +982,310 @@ class TestIteration(unittest.TestCase):
             {
                 0: IntegerRange(1, 2, default_value=10),
                 1: IntegerRange(1, 2, default_value=10),
-                2: IntegerRange(1, 2),
+                2: IntegerRange(1, 2, default_value=10),
             },
             lazy=True,
+            preset="default",
+            reset="default",
         )
         iterated_list = list(u)
         expected_list = [
-            {0: 1, 1: 10, 2: 1},
+            {0: 1, 1: 10, 2: 10},
             {0: 2},
             {0: 10, 1: 1},
             {1: 2},
-            {1: 10},
+            {1: 10, 2: 1},
             {2: 2},
         ]
 
         self.assertEqual(iterated_list, expected_list)
+
+    def test_pick(self):
+        tree = Pick(
+            children={
+                "1": IntegerRange(start=1, end=5, step=1),
+                "2": Sequence(elements=["a", "b", "c", "d"]),
+            },
+            seed=Seed(path=[], salt="test"),
+        )
+        expected_list = [
+            {"1": 1},
+            {"2": "a"},
+            {"2": "b"},
+            {"1": 2},
+            {"2": "c"},
+            {"1": 3},
+            {"1": 4},
+            {"1": 5},
+            {"2": "d"},
+        ]
+        iterated_list = list(tree)
+        self.assertEqual(expected_list, iterated_list)
+
+    @given(st.integers(1, 10000), st.integers(0, 1000))
+    def test_shuffle_yields_a_permutation(self, size: int, salt: int):
+        child = IntegerRange(start=0, end=size - 1)
+        values = set(child)
+        shuffle = generate_seeds(Shuffle(child), salt)
+        shuffled_values = list(shuffle)
+        hypothesis.note(f"Shuffled values: {shuffled_values}")
+
+        self.assertEqual(len(values), len(shuffled_values))
+        self.assertEqual(values, set(shuffled_values))
+
+    def test_first_finite(self):
+        tree = First(IntegerRange(start=0, end=math.inf, step=1), 10)
+        self.assertEqual(list(tree), list(range(10)))
+
+    def test_first_infinite(self):
+        tree = First(IntegerRange(start=0, end=5, step=1), None)
+        self.assertEqual(list(tree), list(range(6)))
+
+    @given(iteration_tree())
+    def test_requested_configuration_is_not_configurable(self, tree: IterationTree):
+        def assert_not_configurable(
+            tree: IterationTree, path: ChildPath
+        ) -> IterationTree:
+            try:
+                self.assertEqual(tree.configurations, set())
+            except AssertionError:
+                hypothesis.note(f"Configurable path: {path}")
+                raise
+
+            return tree
+
+        for name in tree.configurations:
+            configured_tree = tree.get_configuration(name)
+            try:
+                configured_tree.depth_first_modify(assert_not_configurable)
+            except AssertionError:
+                hypothesis.note(f"Configuration: {name}")
+                hypothesis.note(f"Configured tree: {configured_tree}")
+                hypothesis.note(f"Configurable tree: {tree}")
+                raise
+
+    def test_configurations_sample_nomoveup_noinsertname_node(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=False,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": CartesianProduct(
+                    children={
+                        "param1": IterationLiteral(value=11),
+                        "param2": IterationLiteral(value=12),
+                    },
+                )
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_nomoveup_noinsertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=False,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": IterationLiteral(1),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup_noinsertname_node(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=True,
+                    insert_name=False,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "param1": IterationLiteral(value=11),
+                "param2": IterationLiteral(value=12),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup_noinsertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=True,
+                    insert_name=False,
+                )
+            },
+        )
+
+        with self.assertRaises(ValueError):
+            tree.get_configuration("config1")
+
+    def test_configurations_sample_moveup_insertname_node(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=True,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": IterationLiteral(value="config1"),
+                "param1": IterationLiteral(value=11),
+                "param2": IterationLiteral(value=12),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_moveup_insertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=True,
+                    insert_name=True,
+                )
+            },
+        )
+
+        with self.assertRaises(ValueError):
+            tree.get_configuration("config1")
+
+    def test_configurations_sample_nomoveup_insertname_node(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=11),
+                                "param2": IterationLiteral(value=12),
+                            },
+                        ),
+                        "config2": CartesianProduct(
+                            children={
+                                "param1": IterationLiteral(value=21),
+                                "param2": IterationLiteral(value=22),
+                            },
+                        ),
+                    },
+                    move_up=False,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "c": CartesianProduct(
+                    children={
+                        "_configuration": IterationLiteral(value="config1"),
+                        "param1": IterationLiteral(value=11),
+                        "param2": IterationLiteral(value=12),
+                    },
+                )
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    def test_configurations_sample_nomoveup_insertname_leaf(self):
+        tree = CartesianProduct(
+            children={
+                "c": Configurations(
+                    children={
+                        "config1": IterationLiteral(1),
+                        "config2": IterationLiteral(2),
+                    },
+                    move_up=False,
+                    insert_name=True,
+                )
+            },
+        )
+        config = tree.get_configuration("config1")
+        expected_config = CartesianProduct(
+            children={
+                "_c_configuration": IterationLiteral("config1"),
+                "c": IterationLiteral(1),
+            },
+        )
+
+        self.assertEqual(config, expected_config)
+
+    ## Transform ##
 
     def test_transform(self):
         class Add1Tranform(Transform):
@@ -550,6 +1303,36 @@ class TestIteration(unittest.TestCase):
         t = FunctionalTranform(IntegerRange(0, 2), add1)
         t_result = list(t)
         self.assertEqual(t_result, [1, 2, 3])
+
+    @given(
+        st.lists(
+            st.dictionaries(
+                st.integers(min_value=0, max_value=4),
+                st.text(max_size=2),
+                min_size=1,
+                max_size=5,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    def test_accumulating_transform(self, dicts: list[dict[int, str]]):
+        nac_tree = Sequence(dicts)  # type: ignore[arg-type]
+        ac_nac_list = []
+        ac_data_tree: dict[int, str] = {}
+        for data_tree in nac_tree:
+            ac_data_tree |= data_tree  # type: ignore[arg-type]
+            ac_nac_list.append(ac_data_tree.copy())
+
+        hypothesis.note("Expected list: \n" + "\n".join(map(str, ac_nac_list)))
+
+        ac_tree = Accumulator(Sequence(dicts))  # type: ignore[arg-type]
+        ac_list = list(ac_tree)
+        hypothesis.note("Obtained list: \n" + "\n".join(map(str, ac_list)))
+
+        self.assertEqual(ac_list, ac_nac_list)
+
+    ## Default ##
 
     def test_no_default_policy_skip(self):
         t = CartesianProduct({"a": LinearRange(1, 2)})
@@ -573,3 +1356,151 @@ class TestIteration(unittest.TestCase):
         first_value = next(iter(tree))
 
         self.assertEqual(value, first_value)
+
+    # Utilities
+    def test_flatten_datatree(self):
+        tree: DataTree = {"key1": {"key1-1": 1}, "key2": [1, 2], "key3": "value"}
+        expected_flat_tree = {
+            "key1.key1-1": 1,
+            "key2.0": 1,
+            "key2.1": 2,
+            "key3": "value",
+        }
+        flattened_tree = flatten_datatree(tree)
+        self.assertEqual(expected_flat_tree, flattened_tree)
+
+    @given(iterable_iteration_tree())
+    def test_iteration_tree_to_xarray_parameters_raises_no_error(
+        self, tree: IterationTree
+    ):
+        import numpy as np
+        import xarray as xr
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
+            with self.assertRaises(InfiniteLength):
+                iteration_tree_to_xarray_parameters(tree)
+        else:
+            coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+            xr.DataArray(data=np.empty(dims_shape), coords=coords, dims=dims_name)
+
+    @given(iterable_iteration_tree())
+    def test_data_tree_to_xarray_index_raises_no_error(self, tree: IterationTree):
+        if isinstance(tree, (IterationLiteral, IterationLeaf)):
+            return
+
+        if isinstance(tree, IterationMethod) and not isinstance(tree, CartesianProduct):
+            return
+
+        non_gridded = False
+
+        def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+            nonlocal non_gridded
+            if isinstance(tree, IterationMethod) and not isinstance(
+                tree, CartesianProduct
+            ):
+                non_gridded = True
+
+            return tree
+
+        tree.depth_first_modify(inspect)
+
+        if non_gridded:
+            return
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
+            return
+        else:
+            _, dims_name, _ = iteration_tree_to_xarray_parameters(tree)
+
+            for data_tree in tree:
+                if not isinstance(next(iter(tree)), dict):
+                    return
+
+                data_tree_to_xarray_index(data_tree, dims_name)
+
+    @given(iterable_iteration_tree())
+    def test_data_tree_to_xarray_index_returns_valid_index(self, tree: IterationTree):
+        if isinstance(tree, (IterationLiteral, IterationLeaf)):
+            return
+
+        if isinstance(tree, IterationMethod) and not isinstance(tree, CartesianProduct):
+            return
+
+        non_gridded = False
+
+        def inspect(tree: IterationTree, path: ChildPath) -> IterationTree:
+            nonlocal non_gridded
+            if isinstance(tree, IterationMethod) and not isinstance(
+                tree, CartesianProduct
+            ):
+                non_gridded = True
+
+            return tree
+
+        tree.depth_first_modify(inspect)
+
+        if non_gridded:
+            return
+
+        import numpy as np
+        import xarray as xr
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        flat_tree = flatten_datatree(tree.to_pseudo_data_tree())
+        leaves: list[IterationTree | DataLiteral]
+        if isinstance(flat_tree, dict):
+            leaves = list(flat_tree.values())
+        else:
+            leaves = [flat_tree]
+
+        leaf_lengths = [
+            leaf.safe_len() if isinstance(leaf, IterationTree) else 1 for leaf in leaves
+        ]
+        if None in leaf_lengths:
+            return
+        else:
+            coords, dims_name, dims_shape = iteration_tree_to_xarray_parameters(tree)
+            da = xr.DataArray(
+                data=np.full(dims_shape, False), coords=coords, dims=dims_name
+            )
+
+            for data_tree in tree:
+                if not isinstance(next(iter(tree)), dict):
+                    return
+
+                da.loc[data_tree_to_xarray_index(data_tree, dims_name)] = True
+
+    @given(iterable_iteration_tree())
+    def test_iteration_tree_to_multiindex_raises_no_error(self, tree: IterationTree):
+        if tree.safe_len() is None:
+            return
+
+        hypothesis.note(f"The iteration tree is {tree}")
+        try:
+            iteration_tree_to_multiindex(tree)
+        except ValueError as e:
+            if e.args[0] == "Iteration tree that change shape are not supported.":
+                return
+            raise

@@ -50,6 +50,7 @@ bench_instrument:
     experiment_config = """
 experiment_instrument:
   interface: instrument_interface
+  param: _
     """
 
     def setUp(self) -> None:
@@ -76,6 +77,7 @@ class TestMissingBenchInstrument(BaseTestCase):
     experiment_config = """
 experiment_instrument:
   interface: instrument_interface
+  param: _
     """
 
     def setUp(self) -> None:
@@ -98,6 +100,7 @@ bench_instrument2:
     experiment_config = """
 experiment_instrument:
   interface: instrument_interface
+  param: _
     """
 
     def setUp(self) -> None:

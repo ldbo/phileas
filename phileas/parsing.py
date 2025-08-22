@@ -1,8 +1,11 @@
 """
-This module allows to parse configuration files (usually using the YAML format)
-to data and iteration trees, as defined in the `iteration` module. In
-particular, it defines the supported custom YAML types.
+This module allows to parse configuration files, which use a modified YAML
+syntax, to data and iteration trees, as defined in the
+:py:mod:`~phileas.iteration` module. In particular, it defines the
+supported custom YAML types.
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -15,15 +18,13 @@ import numpy as np
 from ruamel import yaml
 from ruamel.yaml import YAML
 
-from phileas.iteration.base import DataTree
-from phileas.iteration.leaf import NumpyRNG
-
-from . import iteration
+from phileas import iteration
+from phileas.iteration import Key, NumpyRNG
 
 # Warning: using the safe loader disables calling __post_init__ in dataclasses,
-# which effectively skips data verification in some custom YAML types. Using the
-# round-trip loader (ie. not specifying `typ`) solve this issue, but changes the
-# signature of `construct_mapping`.
+# which effectively skips data verification in some custom YAML types. Using
+# the round-trip loader (ie. not specifying ``typ``) solve this issue, but
+# changes the signature of ``construct_mapping``.
 _data_tree_parser = YAML(typ="safe")
 _iteration_tree_parser = YAML(typ="safe")
 
@@ -55,7 +56,343 @@ class YamlCustomType(ABC):
         raise NotImplementedError()
 
 
-# Numeric type of the Range
+@_iteration_tree_parser.register_class
+@dataclass
+class Configurations(YamlCustomType):
+    """
+    Configurations container. It holds a dictionary of configurations, and has
+    three optional arguments: ``_default``, ``_move_up`` and ``_insert_name``.
+
+    ``_default`` specifies the name of the default configuration.
+
+    ``_move_up`` is a boolean defaulting to ``False``. If it is set, the content
+    of the chosen configuration will be moved one level up.
+
+    ``_insert_name`` is a boolean defaulting to ``False``. If it is set, the
+    name of the chosen configuration will be inserted in the final
+    :py:attr`~phileas.iteration.base.DataTree``. If ``move_up``, then it
+    is assigned to the key that previously hold the ``!configurations`` node.
+    Otherwise, it is inserted under the name ``"_configuration"``.
+
+    See :py:class:`~phileas.iteration.Configurations` for more details on the
+    impact of ``_move_up`` and ``_insert_name``.
+    """
+
+    yaml_tag: ClassVar[str] = "!configurations"
+    configurations: dict[Key, Any]
+    default: Key
+    move_up: bool
+    insert_name: bool
+
+    @classmethod
+    def from_yaml(
+        cls, constructor: yaml.Constructor, node: yaml.Node
+    ) -> Configurations:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            default = mapping.pop("_default", None)
+            move_up = mapping.pop("_move_up", False)
+            insert_name = mapping.pop("_insert_name", False)
+            return Configurations(
+                configurations=mapping,
+                default=default,
+                move_up=move_up,
+                insert_name=insert_name,
+            )
+        else:
+            raise TypeError("Configurations must be stored in a named map.")
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Configurations(
+            {
+                name: raw_yaml_structure_to_iteration_tree(config)
+                for name, config in self.configurations.items()
+            },
+            default_configuration=self.default,
+            move_up=self.move_up,
+            insert_name=self.insert_name,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class CartesianProduct(YamlCustomType):
+    """
+    Cartesian product node, see
+    :py:class:`~phileas.iteration.CartesianProduct` for the supported
+    arguments.
+    """
+
+    yaml_tag: ClassVar[str] = "!product"
+    children: dict[Key, Any] | list
+    order: list[Key] | None
+    lazy: bool
+    snake: bool
+
+    @classmethod
+    def from_yaml(
+        cls, constructor: yaml.Constructor, node: yaml.Node
+    ) -> CartesianProduct:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            order = mapping.pop("_order", None)
+            lazy = mapping.pop("_lazy", False)
+            snake = mapping.pop("_snake", False)
+            return CartesianProduct(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                snake=snake,
+            )
+        else:
+            children = constructor.construct_sequence(node, deep=True)
+            return CartesianProduct(children, order=None, lazy=False, snake=False)
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
+        if isinstance(self.children, list):
+            children = [
+                raw_yaml_structure_to_iteration_tree(child) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            children = {
+                name: raw_yaml_structure_to_iteration_tree(child)
+                for name, child in self.children.items()
+            }
+        return iteration.CartesianProduct(
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            snake=self.snake,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class Union(YamlCustomType):
+    """
+    Union node, see :py:class:`~phileas.iteration.Union` for the supported
+    arguments.
+    """
+
+    yaml_tag: ClassVar[str] = "!union"
+    children: dict[Key, Any] | list
+    order: list[Key] | None
+    lazy: bool
+    preset: Literal["first"] | Literal["default"] | None
+    common_preset: bool
+    reset: Literal["first"] | Literal["last"] | Literal["default"] | None
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Union:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            order = mapping.pop("_order", None)
+            lazy = mapping.pop("_lazy", False)
+            preset = mapping.pop("_preset", "first")
+            common_preset = mapping.pop("_common_preset", False)
+            reset = mapping.pop("_reset", "first")
+            return Union(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                preset=preset,
+                common_preset=common_preset,
+                reset=reset,
+            )
+        else:
+            children = constructor.construct_sequence(node, deep=True)
+            return Union(
+                children,
+                order=None,
+                lazy=False,
+                preset="first",
+                common_preset=False,
+                reset="first",
+            )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
+        if isinstance(self.children, list):
+            children = [
+                raw_yaml_structure_to_iteration_tree(child) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            children = {
+                name: raw_yaml_structure_to_iteration_tree(child)
+                for name, child in self.children.items()
+            }
+        return iteration.Union(
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            preset=self.preset,
+            common_preset=self.common_preset,
+            reset=self.reset,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class Zip(YamlCustomType):
+    """
+    :py:class:`~phileas.iteration.Zip` node, whose iteration behaves
+    like :py:func:`zip`.
+    """
+
+    yaml_tag: ClassVar[str] = "!zip"
+    children: dict[Key, Any] | list
+    order: list[Key] | None
+    lazy: bool
+    stops_at: Literal["shortest"] | Literal["longest"]
+    ignore_fixed: bool
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Zip:
+        if isinstance(node, yaml.MappingNode):
+            mapping = constructor.construct_mapping(node, deep=True)
+            order = mapping.pop("_order", None)
+            lazy = mapping.pop("_lazy", False)
+            stops_at = mapping.pop("_stops_at", "shortest")
+            ignore_fixed = mapping.pop("_ignore_fixed", True)
+            return Zip(
+                children=mapping,
+                order=order,
+                lazy=lazy,
+                stops_at=stops_at,
+                ignore_fixed=ignore_fixed,
+            )
+        else:
+            children = constructor.construct_sequence(node, deep=True)
+            return Zip(
+                children, order=None, lazy=False, stops_at="shortest", ignore_fixed=True
+            )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        children: dict[Key, iteration.IterationTree] | list[iteration.IterationTree]
+        if isinstance(self.children, list):
+            children = [
+                raw_yaml_structure_to_iteration_tree(child) for child in self.children
+            ]
+        else:
+            assert isinstance(self.children, dict)
+            children = {
+                name: raw_yaml_structure_to_iteration_tree(child)
+                for name, child in self.children.items()
+            }
+        return iteration.Zip(
+            children,
+            order=self.order,
+            lazy=self.lazy,
+            stops_at=self.stops_at,
+            ignore_fixed=self.ignore_fixed,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class Shuffle(YamlCustomType):
+    """
+    Shuffle node, whose iteration returns a permutation of its only child. It
+    has a single ``child`` field.
+    """
+
+    yaml_tag: ClassVar[str] = "!shuffle"
+    child: Any
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Shuffle:
+        mapping = constructor.construct_mapping(node, deep=True)
+        try:
+            child = mapping.pop("child")
+        except KeyError as e:
+            raise ValueError("!shuffle requires a child field") from e
+        return Shuffle(child)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: Shuffle):
+        if isinstance(node.child, dict):
+            return representer.represent_mapping(cls.yaml_tag, node.child)
+        else:
+            return representer.represent_sequence(cls.yaml_tag, node.child)
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Shuffle(raw_yaml_structure_to_iteration_tree(self.child))
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class First(YamlCustomType):
+    """
+    :py:class:`~phileas.iteration.First` node, which only iterates over the
+    first elements of its child.
+    """
+
+    yaml_tag: ClassVar[str] = "!first"
+    child: Any
+    size: int | None
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> First:
+        mapping = constructor.construct_mapping(node, deep=True)
+        try:
+            child = mapping.pop("_child")
+            size = mapping.pop("_size", None)
+        except KeyError as e:
+            raise ValueError(f"!first requires a {e.args[0]} field") from e
+        return First(child, size)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: First):
+        return representer.represent_mapping(
+            cls.yaml_tag, {"_size": node.size, "_child": node.child}
+        )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.First(
+            raw_yaml_structure_to_iteration_tree(self.child), self.size
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class Pick(YamlCustomType):
+    """
+    Pick node, whose iteration alternatively returns a single of its children.
+    It contains a named mapping, with a ``_default_child`` field, containing
+    the key of its default child.
+    """
+
+    yaml_tag: ClassVar[str] = "!pick"
+    children: dict[Key, Any]
+    default_child: Key
+
+    @classmethod
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Pick:
+        mapping = constructor.construct_mapping(node, deep=True)
+        default_child = mapping.pop("_default_child", None)
+
+        return Pick(children=mapping, default_child=default_child)
+
+    @classmethod
+    def to_yaml(cls, representer: yaml.Representer, node: Pick):
+        return representer.represent_mapping(
+            cls.yaml_tag, node.children | {"_default_child": node.default_child}
+        )
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.Pick(
+            {
+                name: raw_yaml_structure_to_iteration_tree(config)
+                for name, config in self.children.items()
+            },
+            default_child=self.default_child,
+        )
+
+
+#: Numeric type of the Range
 RT = TypeVar("RT", bound=int | float)
 
 
@@ -65,22 +402,24 @@ class Range(YamlCustomType, Generic[RT]):
     """
     Range of numbers, that can optionally (but usually will) specify an
     iteration method. It can be converted to an iteration leaf using
-    `to_iteration_tree`.
+    :py:meth:`to_iteration_tree`.
 
-    The `start` and `end` attributes are mandatory, and `default` can be
+    The ``start`` and ``end`` attributes are mandatory, and ``default`` can be
     optionally specified.
 
-    `steps` or `resolution` (but not both) can be specified. If they are, and
-    `progression` is not, or equals `"linear"`, the range will represent
-      - an `iteration.IntegerRange` if `start` and `end` are integers and
-        `resolution` is used and is an integer;
-      - an `iteration.LinearRange` otherwise.
+    ``steps`` or ``resolution`` (but not both) can be specified. If they are,
+    and ``progression`` is not, or equals ``"linear"``, the range will
+    represent
 
-    If `progression` is `geometric`, the `Range` will represent an
-    `iteration.GeometricRange`.
+    - an :py:class:`~phileas.iteration.IntegerRange` if ``start`` and ``end``
+      are integers and ``resolution`` is used and is an integer;
+    - an :py:class:`~phileas.iteration.LinearRange` otherwise.
 
-    If neither `steps` nor `resolution` is specified, the range will represent
-    an `iteration.NumericRange`.
+    If ``progression`` is ``geometric``, the :py:class:`Range` will represent an
+    :py:class:`~phileas.iteration.GeometricRange`.
+
+    If neither ``steps`` nor ``resolution`` is specified, the range will
+    represent an :py:class:`~phileas.iteration.NumericRange`.
     """
 
     yaml_tag: ClassVar[str] = "!range"
@@ -169,7 +508,7 @@ class Sequence(YamlCustomType):
     default: iteration.DataTree | None = None
 
     @classmethod
-    def to_yaml(cls, representer: yaml.Representer, node: "Sequence"):
+    def to_yaml(cls, representer: yaml.Representer, node: Sequence):
         if node.default is None:
             return representer.represent_sequence(cls.yaml_tag, node.elements)
 
@@ -178,7 +517,7 @@ class Sequence(YamlCustomType):
         )
 
     @classmethod
-    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node):
+    def from_yaml(cls, constructor: yaml.Constructor, node: yaml.Node) -> Sequence:
         if isinstance(node, yaml.SequenceNode):
             elements = constructor.construct_sequence(node, deep=True)
             default = None
@@ -213,7 +552,7 @@ class Random(YamlCustomType):
     distribution: str
     parameters: dict[str, Any]
     size: int | None = None
-    default: DataTree | None = None
+    default: iteration.DataTree | None = None
 
     def to_iteration_tree(self) -> iteration.IterationTree:
         return NumpyRNG(
@@ -222,6 +561,44 @@ class Random(YamlCustomType):
             default_value=self.default,
             distribution=getattr(np.random.Generator, self.distribution),
             kwargs=self.parameters,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class UniformBigIntegerRng(YamlCustomType):
+    yaml_tag: ClassVar[str] = "!random_uniform_bigint"
+    high: int
+    low: int = 0
+    size: int | None = None
+    default: iteration.DataTree | None = None
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.UniformBigIntegerRng(
+            seed=None,
+            size=self.size,
+            default_value=self.default,
+            low=self.low,
+            high=self.high,
+        )
+
+
+@_iteration_tree_parser.register_class
+@dataclass
+class PrimeRng(YamlCustomType):
+    yaml_tag: ClassVar[str] = "!random_prime"
+    high: int
+    low: int = 0
+    size: int | None = None
+    default: iteration.DataTree | None = None
+
+    def to_iteration_tree(self) -> iteration.IterationTree:
+        return iteration.PrimeRng(
+            seed=None,
+            size=self.size,
+            default_value=self.default,
+            low=self.low,
+            high=self.high,
         )
 
 

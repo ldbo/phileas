@@ -12,14 +12,13 @@ import rich.console
 import rich.markdown
 
 import phileas
+from phileas.factory import ExperimentFactory
 
 _CONSOLE = rich.console.Console()
 _ERROR_CONSOLE = rich.console.Console(stderr=True, style="bold red")
 
-# List loaders
 
-
-def list_loaders(script: pathlib.Path) -> int:
+def _import_script(script: pathlib.Path) -> int | None:
     inspected_module_spec = importlib.util.spec_from_file_location(
         "inspected_module", script
     )
@@ -35,6 +34,17 @@ def list_loaders(script: pathlib.Path) -> int:
     inspected_module = importlib.util.module_from_spec(inspected_module_spec)
     loader.exec_module(inspected_module)
 
+    return None
+
+
+# List loaders
+
+
+def list_loaders(script: pathlib.Path) -> int:
+    rval = _import_script(script)
+    if rval is not None:
+        return rval
+
     doc = phileas.ExperimentFactory.get_default_loaders_markdown_documentation()
     if _CONSOLE.is_terminal:
         doc_md = rich.markdown.Markdown(doc)
@@ -43,6 +53,20 @@ def list_loaders(script: pathlib.Path) -> int:
         _CONSOLE.print(doc)
 
     return 0
+
+
+# Dump bench state
+
+
+def dump_state(
+    bench: pathlib.Path, experiment: pathlib.Path, script: pathlib.Path, full: bool
+):
+    rval = _import_script(script)
+    if rval is not None:
+        return rval
+
+    factory = ExperimentFactory(bench, experiment)
+    factory.dump_bench_state(full=full)
 
 
 # Template generation
@@ -58,9 +82,9 @@ class Template(enum.Enum):
 
     def to_template_file(self) -> str:
         return {
-            "bench": "bench.yaml",
-            "experiment": "experiment.yaml",
-            "script": "script.py",
+            "bench": "bench.yaml.template",
+            "experiment": "experiment.yaml.template",
+            "script": "script.py.template",
         }[self.value]
 
 
@@ -70,7 +94,7 @@ def generate_template(
     dont_write: bool,
     no_explanation: bool,
     no_example: bool,
-    **kwargs
+    **kwargs,
 ) -> int:
     template_environment = jinja2.Environment(
         loader=jinja2.PackageLoader("phileas", "templates"),
@@ -97,20 +121,24 @@ def generate_template(
 def generate_script(
     bench: pathlib.Path | None,
     experiment: pathlib.Path | None,
-    experiment_config: str | None,
-    **kwargs
+    experiment_config_path: str | None,
+    **kwargs,
 ) -> int:
-    template_data = {}
-    if bench is not None and experiment is not None and experiment_config is not None:
+    template_data: dict[str, typing.Any] = {}
+    if (
+        bench is not None
+        and experiment is not None
+        and experiment_config_path is not None
+    ):
         try:
-            importlib.import_module(experiment_config)
-        except:
-            import experiment_config
+            importlib.import_module(experiment_config_path)
+        except ImportError:
+            import experiment_config  # type: ignore[import-not-found]  # noqa: F401
 
         factory = phileas.ExperimentFactory(bench, experiment)
         instruments_and_type = []
         dependencies = set()
-        for instrument in factory._ExperimentFactory__experiment_instruments.values():
+        for instrument in factory._ExperimentFactory__experiment_instruments.values():  # type: ignore[attr-defined]
             name = instrument.name
             hints = typing.get_type_hints(
                 instrument.bench_instrument.loader.initiate_connection
@@ -128,9 +156,9 @@ def generate_script(
         template_data["instruments_and_type"] = instruments_and_type
         template_data["bench"] = bench
         template_data["experiment"] = experiment
-        template_data["experiment_config"] = experiment_config
-        template_data["dependencies"] = dependencies - {experiment_config}
-    elif bench is None and experiment is None and experiment_config is None:
+        template_data["experiment_config"] = experiment_config_path
+        template_data["dependencies"] = dependencies - {experiment_config_path}
+    elif bench is None and experiment is None and experiment_config_path is None:
         pass
     else:
         print(
@@ -172,12 +200,20 @@ def configure_common_template_parser(
     parser.set_defaults(callback=generate_template)
 
 
+# Benchmark
+
+
+def benchmark():
+    from . import benchmark
+
+    benchmark.run()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Phileas CLI utility.")
     commands_parser = parser.add_subparsers(required=True)
 
     # List loaders
-
     list_loaders_parser = commands_parser.add_parser(
         "list-loaders",
         description="List the default loaders registered by a script.",
@@ -188,6 +224,39 @@ def main():
         help="Path of the analyzed script",
     )
     list_loaders_parser.set_defaults(callback=list_loaders)
+
+    # Dump state
+    dump_state_parser = commands_parser.add_parser(
+        "dump-state", description=("Dump the state of an experiment bench.")
+    )
+    dump_state_parser.add_argument(
+        "--bench",
+        "-b",
+        type=pathlib.Path,
+        help="Path of the bench configuration file.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--experiment",
+        "-e",
+        type=pathlib.Path,
+        help="Path of the experiment configuration file.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--script",
+        "-s",
+        type=str,
+        help="Path of a script which registers the required loaders.",
+        required=True,
+    )
+    dump_state_parser.add_argument(
+        "--partial",
+        action="store_true",
+        default=True,
+        help=("Dump the bench instruments without their individual states"),
+    )
+    dump_state_parser.set_defaults(callback=dump_state)
 
     # Template generation
     generate_parser = commands_parser.add_parser(
@@ -242,6 +311,12 @@ def main():
     )
     generate_script_parser.set_defaults(callback=generate_script)
     generate_script_parser.set_defaults(template_type=Template.script)
+
+    # Benchmark
+    benchmark_parser = commands_parser.add_parser(
+        "benchmark", description="Run a performance benchmark."
+    )
+    benchmark_parser.set_defaults(callback=benchmark)
 
     parsed_args = parser.parse_args()
     callback = parsed_args.callback
