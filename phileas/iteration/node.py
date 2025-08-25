@@ -271,7 +271,7 @@ class IterationMethod(IterationTree):
             return {
                 key: child_tree
                 for key, child_tree in default_dict.items()
-                if not child_tree == no_default
+                if child_tree != no_default
             }
         else:
             return default_dict
@@ -417,7 +417,10 @@ class IterationMethodIterator(TreeIterator[T]):
         if isinstance(self.tree.children, list):
             self.positions = new_positions
             assert all(pos is not None for pos in new_positions)
-            return [it[pos] for it, pos in zip(self.iterators, new_positions)]  # type: ignore[index]
+            return [
+                it[pos]  # type: ignore[index]
+                for it, pos in zip(self.iterators, new_positions, strict=True)
+            ]
 
         ret = {}
         for i, pos in enumerate(new_positions):

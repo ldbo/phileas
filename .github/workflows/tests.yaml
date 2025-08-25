@@ -34,23 +34,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - uses: astral-sh/ruff-action@v3
+    - name: Format Python code
+      uses: astral-sh/ruff-action@v3
       with:
         version: 0.12.10
         args: format --check --diff
 
-    - name: Configure Python environment
-      uses: actions/setup-python@v4
+    - name: Lint Python code
+      uses: astral-sh/ruff-action@v3
       with:
-        python-version: "3.13"
-
-    - name: Lint Python files with flake8
-      uses: py-actions/flake8@v2
-      with:
-        plugins: "flake8-bugbear flake8-comprehensions flake8-simplify"
-
-    - name: Sort Python imports
-      uses: isort/isort-action@v1
+        version: 0.12.10
+        args: check
 
     - name: Prepare Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1

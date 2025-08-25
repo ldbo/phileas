@@ -286,7 +286,7 @@ class MotorsLoader(Loader):
         if configuration is None:
             return self.dump_state(instrument)  # type: ignore[return-value]
 
-        for name in configuration.keys():
+        for name in configuration:
             configuration[name] = getattr(instrument, name)
 
         return configuration

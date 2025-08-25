@@ -597,7 +597,7 @@ class ExperimentFactory:
         elif not isinstance(bench_config, dict):
             raise ValueError("The bench configuration must be a dictionary.")
 
-        if any(not isinstance(key, str) for key in bench_config.keys()):
+        if any(not isinstance(key, str) for key in bench_config):
             raise ValueError("The bench configuration must only have string keys.")
 
         self.bench_config = bench_config  # type: ignore[assignment]
@@ -984,7 +984,7 @@ class ExperimentFactory:
             configuration = dict.fromkeys(self.__experiment_instruments, None)
 
         effective_configuration = {}
-        for name in configuration.keys():
+        for name in configuration:
             if name not in self.__experiment_instruments:
                 continue
 
@@ -1230,7 +1230,7 @@ class ExperimentFactory:
         for instrument, ports in instruments_ports.items():
             concatenated_ports = ("".join(port) for port in sorted(ports))
             labels_iter = enumerate(chain([instrument], concatenated_ports))
-            node_label = " | ".join(f"<f{i}> {l}" for i, l in labels_iter)
+            node_label = " | ".join(f"<f{index}> {name}" for index, name in labels_iter)
             graph.node(instrument, node_label)
 
         graph.edges(edges)

@@ -304,10 +304,7 @@ def configurations(
     ):
         move_up = draw(st.booleans())
 
-        if move_up:
-            insert_name = False
-        else:
-            insert_name = draw(st.booleans())
+        insert_name = False if move_up else draw(st.booleans())
 
     default_child = draw(st.sampled_from(list(children.keys())))
 
@@ -956,7 +953,7 @@ class TestIteration(unittest.TestCase):
         if tree.safe_len() is not None:
             iterated_list = list(tree)
             hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
-            expected_list = [list(v) for v in zip(*children)]
+            expected_list = [list(v) for v in zip(*children, strict=False)]
             hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
             self.assertEqual(iterated_list, expected_list)
         else:
@@ -965,7 +962,7 @@ class TestIteration(unittest.TestCase):
             iterated_list = list(itertools.islice(tree, index))
             hypothesis.note("Iterated list: \n" + "\n".join(map(str, iterated_list)))
             expected_list = list(
-                itertools.islice((list(v) for v in zip(*children)), index)
+                itertools.islice((list(v) for v in zip(*children, strict=False)), index)
             )
             hypothesis.note("Expected list: \n" + "\n".join(map(str, expected_list)))
             self.assertEqual(iterated_list, expected_list)

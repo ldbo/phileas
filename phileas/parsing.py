@@ -458,11 +458,7 @@ class Range(YamlCustomType, Generic[RT]):
         start = self.start
         end = self.end
 
-        default: RT | iteration._NoDefault
-        if self.default is None:
-            default = iteration.no_default
-        else:
-            default = self.default
+        default = iteration.no_default if self.default is None else self.default
 
         def is_int(i: object) -> bool:
             return isinstance(i, int)
@@ -546,11 +542,7 @@ class Sequence(YamlCustomType):
         return Sequence(elements=elements, default=default)
 
     def to_iteration_tree(self) -> iteration.IterationTree:
-        default: iteration.DataTree | iteration._NoDefault
-        if self.default is None:
-            default = iteration.no_default
-        else:
-            default = self.default
+        default = iteration.no_default if self.default is None else self.default
 
         return iteration.Sequence(self.elements, default)
 
