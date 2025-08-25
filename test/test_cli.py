@@ -65,10 +65,12 @@ class TestCli(unittest.TestCase):
         test_module = importlib.resources.files("test")
         shutil.copy(str(test_module / "functional_1_bench.yaml"), "./bench.yaml")
         shutil.copy(
-            str(test_module / "functional_1_experiment.yaml"), "./experiment.yaml"
+            str(test_module / "functional_1_experiment.yaml"),
+            "./experiment.yaml",
         )
         shutil.copy(
-            str(test_module / "functional_1_config.py"), "./experiment_config.py"
+            str(test_module / "functional_1_config.py"),
+            "./experiment_config.py",
         )
 
         if bench is None:

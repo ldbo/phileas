@@ -6,7 +6,7 @@
 [![Documentation](https://img.shields.io/readthedocs/phileas)](https://phileas.readthedocs.io/en/latest/)
 [![Code coverage](https://img.shields.io/coverallsCoverage/github/ldbo/phileas)](https://coveralls.io/github/ldbo/phileas)
 [![Tested with Hypothesis](https://img.shields.io/badge/hypothesis-tested-brightgreen.svg)](https://hypothesis.readthedocs.io/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 
 # Phileas - a Python library for hardware security experiments automation

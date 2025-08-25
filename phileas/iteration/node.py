@@ -172,7 +172,8 @@ class IterationMethod(IterationTree):
 
             if configs.insert_name:
                 self.__config_update_children(
-                    children, {configs_key: IterationLiteral(requested_config_name)}
+                    children,
+                    {configs_key: IterationLiteral(requested_config_name)},
                 )
         elif is_transformed_leaf:  # and not configs.move_up
             self.__config_update_children(children, {configs_key: requested_config})
@@ -187,7 +188,8 @@ class IterationMethod(IterationTree):
             if configs.insert_name:
                 try:
                     requested_config = requested_config.insert_child(
-                        ["_configuration"], IterationLiteral(requested_config_name)
+                        ["_configuration"],
+                        IterationLiteral(requested_config_name),
                     )
                 except TypeError:
                     assert isinstance(requested_config, IterationMethod)
@@ -724,7 +726,8 @@ class Zip(IterationMethod):
         else:
             return ZipIterator(
                 self.with_params(
-                    [], children=[First(child, size) for child in self.children]
+                    [],
+                    children=[First(child, size) for child in self.children],
                 )
             )
 
@@ -745,7 +748,9 @@ class Zip(IterationMethod):
 
             lengths = [child.safe_len() for child in children]
             valid_lengths: list[int] = [
-                length for length in lengths if length not in ignored  # type: ignore[misc]
+                length  # type: ignore[misc]
+                for length in lengths
+                if length not in ignored
             ]
 
             if len(valid_lengths) == 0:
@@ -1269,18 +1274,26 @@ class Configurations(IterationMethod):
     :py:class:`Configuration` node is simply replaced by the content of the
     requested configuration.
 
-    >>> tree = CartesianProduct({
-    ...     "instrument": Configurations({
-    ...         "config1": CartesianProduct({
-    ...             "param1": IterationLiteral(value="1-1"),
-    ...             "param2": IterationLiteral(value="1-2"),
-    ...         }),
-    ...         "config2": CartesianProduct({
-    ...             "param1": IterationLiteral(value="2-1"),
-    ...             "param3": IterationLiteral(value="2-3"),
-    ...         })
-    ...     })
-    ... })
+    >>> tree = CartesianProduct(
+    ...     {
+    ...         "instrument": Configurations(
+    ...             {
+    ...                 "config1": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="1-1"),
+    ...                         "param2": IterationLiteral(value="1-2"),
+    ...                     }
+    ...                 ),
+    ...                 "config2": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="2-1"),
+    ...                         "param3": IterationLiteral(value="2-3"),
+    ...                     }
+    ...                 ),
+    ...             }
+    ...         )
+    ...     }
+    ... )
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': {'param1': '1-1', 'param2': '1-2'}}
 
@@ -1289,17 +1302,26 @@ class Configurations(IterationMethod):
     node. This requires it to have an :py:class:`IterationMethod` parent with
     ``dict`` children. This can be used to factorize configurations.
 
-    >>> tree = CartesianProduct({
-    ...     "_": Configurations({
-    ...         "config1": CartesianProduct({
-    ...             "param1": IterationLiteral(value="1-1"),
-    ...         }),
-    ...         "config2": CartesianProduct({
-    ...             "param1": IterationLiteral(value="2-1"),
-    ...         })
-    ...     }, move_up=True),
-    ...     "param2": IterationLiteral(value="2")
-    ... })
+    >>> tree = CartesianProduct(
+    ...     {
+    ...         "_": Configurations(
+    ...             {
+    ...                 "config1": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="1-1"),
+    ...                     }
+    ...                 ),
+    ...                 "config2": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="2-1"),
+    ...                     }
+    ...                 ),
+    ...             },
+    ...             move_up=True,
+    ...         ),
+    ...         "param2": IterationLiteral(value="2"),
+    ...     }
+    ... )
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'param1': '1-1', 'param2': '2'}
 
@@ -1308,36 +1330,55 @@ class Configurations(IterationMethod):
     (_ie_. it is an :py:class:`IterationMethod` with ``dict`` children), the
     name is inserted into itself, with the key ``_configuration``.
 
-    >>> tree = CartesianProduct({
-    ...     "instrument": Configurations({
-    ...         "config1": CartesianProduct({
-    ...             "param1": IterationLiteral(value="1-1"),
-    ...             "param2": IterationLiteral(value="1-2"),
-    ...         }),
-    ...         "config2": CartesianProduct({
-    ...             "param1": IterationLiteral(value="2-1"),
-    ...             "param3": IterationLiteral(value="2-3"),
-    ...         })
-    ...     }, insert_name=True)
-    ... })
+    >>> tree = CartesianProduct(
+    ...     {
+    ...         "instrument": Configurations(
+    ...             {
+    ...                 "config1": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="1-1"),
+    ...                         "param2": IterationLiteral(value="1-2"),
+    ...                     }
+    ...                 ),
+    ...                 "config2": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="2-1"),
+    ...                         "param3": IterationLiteral(value="2-3"),
+    ...                     }
+    ...                 ),
+    ...             },
+    ...             insert_name=True,
+    ...         )
+    ...     }
+    ... )
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': {'_configuration': 'config1', 'param1': '1-1', 'param2': '1-2'}}
 
     If, additionally, ``move_up == True``, the name of the configuration is
     inserted instead of the :py:class:`Configurations` node.
 
-    >>> tree = CartesianProduct({
-    ...     "instrument": Configurations({
-    ...         "config1": CartesianProduct({
-    ...             "param1": IterationLiteral(value="1-1"),
-    ...             "param2": IterationLiteral(value="1-2"),
-    ...         }),
-    ...         "config2": CartesianProduct({
-    ...             "param1": IterationLiteral(value="2-1"),
-    ...             "param3": IterationLiteral(value="2-3"),
-    ...         })
-    ...     }, insert_name=True, move_up=True)
-    ... })
+    >>> tree = CartesianProduct(
+    ...     {
+    ...         "instrument": Configurations(
+    ...             {
+    ...                 "config1": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="1-1"),
+    ...                         "param2": IterationLiteral(value="1-2"),
+    ...                     }
+    ...                 ),
+    ...                 "config2": CartesianProduct(
+    ...                     {
+    ...                         "param1": IterationLiteral(value="2-1"),
+    ...                         "param3": IterationLiteral(value="2-3"),
+    ...                     }
+    ...                 ),
+    ...             },
+    ...             insert_name=True,
+    ...             move_up=True,
+    ...         )
+    ...     }
+    ... )
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'instrument': 'config1', 'param1': '1-1', 'param2': '2'}
 
@@ -1345,12 +1386,17 @@ class Configurations(IterationMethod):
     :py:class:`IterationMethod`, its ``name`` is inserted as a sibling, assigned
     to the key ``f"_{name}_configuration"``.
 
-    >>> tree = CartesianProduct({
-    ...     "param": Configurations({
-    ...         "config1": IterationLiteral(value="1"),
-    ...         "config2": IterationLiteral(value="2"),
-    ...     }, insert_name=True),
-    ... })
+    >>> tree = CartesianProduct(
+    ...     {
+    ...         "param": Configurations(
+    ...             {
+    ...                 "config1": IterationLiteral(value="1"),
+    ...                 "config2": IterationLiteral(value="2"),
+    ...             },
+    ...             insert_name=True,
+    ...         ),
+    ...     }
+    ... )
     >>> tree.get_configuration("config1").to_pseudo_data_tree()
     {'_param_configuration': 'config1', 'param': '1'}
 
@@ -1401,7 +1447,9 @@ class Configurations(IterationMethod):
         super().__post_init__()
 
         object.__setattr__(
-            self, "configurations", self.configurations.union(self.children.keys())
+            self,
+            "configurations",
+            self.configurations.union(self.children.keys()),
         )
 
         if (
@@ -1426,8 +1474,7 @@ class Configurations(IterationMethod):
 
     def _iter(self) -> TreeIterator:
         raise AssertionError(
-            f"{self.__class__.__name__} iteration is handled by "
-            "IterationTree.__iter__."
+            f"{self.__class__.__name__} iteration is handled by IterationTree.__iter__."
         )
 
     def _len(self) -> int:

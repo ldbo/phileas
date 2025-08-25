@@ -63,7 +63,9 @@ default_settings = hypothesis.settings.register_profile(
 
 hypothesis.settings.register_profile("ci", parent=default_settings, database=local)
 hypothesis.settings.register_profile(
-    "dev", parent=default_settings, database=hdb.MultiplexedDatabase(local, shared)
+    "dev",
+    parent=default_settings,
+    database=hdb.MultiplexedDatabase(local, shared),
 )
 hypothesis.settings.load_profile("ci" if os.environ.get("CI") else "dev")
 
@@ -261,7 +263,11 @@ def union(
     reset = draw(st.sampled_from(resets))
 
     return Union(
-        children, lazy=lazy, preset=preset, common_preset=common_preset, reset=reset
+        children,
+        lazy=lazy,
+        preset=preset,
+        common_preset=common_preset,
+        reset=reset,
     )
 
 
@@ -664,7 +670,8 @@ class TestIteration(unittest.TestCase):
     @given(st.lists(st.integers(min_value=2, max_value=3), min_size=1, max_size=5))
     def test_cartesian_product_forward_lazy_iteration(self, sizes: list[int]):
         tree = CartesianProduct(
-            {i: Sequence(list(range(s))) for i, s in enumerate(sizes)}, lazy=False
+            {i: Sequence(list(range(s))) for i, s in enumerate(sizes)},
+            lazy=False,
         )
 
         non_lazy_list = list(tree)
@@ -965,7 +972,8 @@ class TestIteration(unittest.TestCase):
 
     def test_zip_longest(self):
         tree = Zip(
-            {"a": Sequence([1, 2, 3]), "b": Sequence([1, 2])}, stops_at="longest"
+            {"a": Sequence([1, 2, 3]), "b": Sequence([1, 2])},
+            stops_at="longest",
         )
 
         iterated_list = list(tree)
@@ -1359,7 +1367,11 @@ class TestIteration(unittest.TestCase):
 
     # Utilities
     def test_flatten_datatree(self):
-        tree: DataTree = {"key1": {"key1-1": 1}, "key2": [1, 2], "key3": "value"}
+        tree: DataTree = {
+            "key1": {"key1-1": 1},
+            "key2": [1, 2],
+            "key3": "value",
+        }
         expected_flat_tree = {
             "key1.key1-1": 1,
             "key2.0": 1,

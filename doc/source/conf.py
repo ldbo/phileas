@@ -37,7 +37,12 @@ extensions = [
 templates_path = ["_templates"]
 
 ## MyST-NB
-myst_enable_extensions = ["colon_fence", "smartquotes", "replacements", "dollarmath"]
+myst_enable_extensions = [
+    "colon_fence",
+    "smartquotes",
+    "replacements",
+    "dollarmath",
+]
 nb_number_source_lines = True
 nb_merge_streams = True
 myst_heading_anchors = 6

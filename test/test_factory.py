@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import ClassVar
 
 import phileas
-from phileas import ExperimentFactory, clear_default_loaders, register_default_loader
+from phileas import (
+    ExperimentFactory,
+    clear_default_loaders,
+    register_default_loader,
+)
 from phileas.iteration import DataTree
 
 
@@ -245,7 +249,8 @@ class TestLoaderDocumentation(BaseTestCase):
             self.factory.get_loaders_markdown_documentation(), expected_doc
         )
         self.assertEqual(
-            ExperimentFactory.get_default_loaders_markdown_documentation(), expected_doc
+            ExperimentFactory.get_default_loaders_markdown_documentation(),
+            expected_doc,
         )
 
 

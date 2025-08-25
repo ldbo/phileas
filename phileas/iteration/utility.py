@@ -129,7 +129,9 @@ def is_transformed_iteration_leaf(tree: IterationTree) -> bool:
 
 
 def flatten_datatree(
-    tree: DataTree | PseudoDataTree, key_prefix: None | str = None, separator: str = "."
+    tree: DataTree | PseudoDataTree,
+    key_prefix: None | str = None,
+    separator: str = ".",
 ) -> dict[str, DataLiteral | IterationLeaf] | DataLiteral | IterationLeaf:
     """
     Transform nested ``dict`` and ``list`` objects to a single-level ``dict``.
@@ -143,13 +145,7 @@ def flatten_datatree(
     Keys are converted to ``str``, and concatenated using the specified
     ``separator``. ``list`` objects are considered as ``int``-keyed ``dict``.
 
-    >>> tree = {
-    ...     "key1": {
-    ...         "key1-1": 1
-    ...     },
-    ...     "key2": [1, 2],
-    ...     "key3": "value"
-    ... }
+    >>> tree = {"key1": {"key1-1": 1}, "key2": [1, 2], "key3": "value"}
     >>> flatten_datatree(tree)
     {'key1.key1-1': 1, 'key2.0': 1, 'key2.1': 2, 'key3': 'value'}
     """
@@ -232,7 +228,11 @@ def iteration_tree_to_xarray_parameters(
 
         return coords, dims_name, dims_shape
     elif isinstance(flattened_tree, IterationLeaf):
-        return {"dim_0": list(flattened_tree)}, ["dim_0"], [len(flattened_tree)]
+        return (
+            {"dim_0": list(flattened_tree)},
+            ["dim_0"],
+            [len(flattened_tree)],
+        )
     else:
         assert isinstance(flattened_tree, (NoneType, bool, str, int, float))
         return {"dim_0": [flattened_tree]}, ["dim_0"], [1]

@@ -2,7 +2,14 @@ import time
 
 import numpy as np
 
-from phileas.iteration import CartesianProduct, IterationTree, Pick, Shuffle, Union, Zip
+from phileas.iteration import (
+    CartesianProduct,
+    IterationTree,
+    Pick,
+    Shuffle,
+    Union,
+    Zip,
+)
 from phileas.iteration.leaf import (
     GeneratorWrapper,
     GeometricRange,

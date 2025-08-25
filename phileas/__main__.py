@@ -59,7 +59,10 @@ def list_loaders(script: pathlib.Path) -> int:
 
 
 def dump_state(
-    bench: pathlib.Path, experiment: pathlib.Path, script: pathlib.Path, full: bool
+    bench: pathlib.Path,
+    experiment: pathlib.Path,
+    script: pathlib.Path,
+    full: bool,
 ):
     rval = _import_script(script)
     if rval is not None:
@@ -277,7 +280,8 @@ def main():
     generate_bench_parser.set_defaults(template_type=Template.bench)
 
     generate_experiment_parser = generate_commands.add_parser(
-        "experiment", description="Generate an experiment configuration file template."
+        "experiment",
+        description="Generate an experiment configuration file template.",
     )
     configure_common_template_parser(generate_experiment_parser, Template.experiment)
     generate_experiment_parser.set_defaults(template_type=Template.experiment)
@@ -287,7 +291,10 @@ def main():
     )
     configure_common_template_parser(generate_script_parser, Template.script)
     generate_script_parser.add_argument(
-        "--bench", "-b", type=pathlib.Path, help="Path of the bench configuration file."
+        "--bench",
+        "-b",
+        type=pathlib.Path,
+        help="Path of the bench configuration file.",
     )
     generate_script_parser.add_argument(
         "--experiment",
@@ -304,7 +311,9 @@ def main():
         "succeed.",
     )
     generate_script_parser.add_argument(
-        "--no-cli", action="store_true", help="Do not add the CLI parser in the script."
+        "--no-cli",
+        action="store_true",
+        help="Do not add the CLI parser in the script.",
     )
     generate_script_parser.add_argument(
         "--no-logging", action="store_true", help="Disable logging."

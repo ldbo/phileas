@@ -13,7 +13,8 @@ start: 1
 end: 2
 """
         self.assertEqual(
-            load_iteration_tree_from_yaml_file(content), iteration.NumericRange(1, 2)
+            load_iteration_tree_from_yaml_file(content),
+            iteration.NumericRange(1, 2),
         )
 
     def test_integer_range_parsing(self):
@@ -231,7 +232,8 @@ _child: !sequence [1, 2, 3]
     def test_literal_tree(self):
         content = """12"""
         self.assertEqual(
-            load_iteration_tree_from_yaml_file(content), iteration.IterationLiteral(12)
+            load_iteration_tree_from_yaml_file(content),
+            iteration.IterationLiteral(12),
         )
 
     def test_empty_tree(self):

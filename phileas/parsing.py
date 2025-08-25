@@ -37,7 +37,9 @@ def load_data_tree_from_yaml_file(file: Path | str) -> iteration.DataTree:
     return _data_tree_parser.load(file)
 
 
-def load_iteration_tree_from_yaml_file(file: Path | str) -> iteration.IterationTree:
+def load_iteration_tree_from_yaml_file(
+    file: Path | str,
+) -> iteration.IterationTree:
     """
     Parses a YAML configuration file (from its path or its content) into an
     iteration tree. Iteration will be based on cartesian products, and
@@ -267,7 +269,11 @@ class Zip(YamlCustomType):
         else:
             children = constructor.construct_sequence(node, deep=True)
             return Zip(
-                children, order=None, lazy=False, stops_at="shortest", ignore_fixed=True
+                children,
+                order=None,
+                lazy=False,
+                stops_at="shortest",
+                ignore_fixed=True,
             )
 
     def to_iteration_tree(self) -> iteration.IterationTree:
@@ -379,7 +385,8 @@ class Pick(YamlCustomType):
     @classmethod
     def to_yaml(cls, representer: yaml.Representer, node: Pick):
         return representer.represent_mapping(
-            cls.yaml_tag, node.children | {"_default_child": node.default_child}
+            cls.yaml_tag,
+            node.children | {"_default_child": node.default_child},
         )
 
     def to_iteration_tree(self) -> iteration.IterationTree:
@@ -473,7 +480,10 @@ class Range(YamlCustomType, Generic[RT]):
             assert isinstance(default, int) or default is iteration.no_default
             assert isinstance(self.resolution, int)
             return iteration.IntegerRange(
-                start, end, default_value=default, step=self.resolution  # type: ignore[arg-type]
+                start,
+                end,
+                default_value=default,
+                step=self.resolution,  # type: ignore[arg-type]
             )
         elif self.progression in (None, "linear"):
             assert isinstance(end, (int, float))
@@ -605,7 +615,9 @@ class PrimeRng(YamlCustomType):
 ### Conversion to iteration tree ###
 
 
-def raw_yaml_structure_to_iteration_tree(structure: Any) -> iteration.IterationTree:
+def raw_yaml_structure_to_iteration_tree(
+    structure: Any,
+) -> iteration.IterationTree:
     if isinstance(structure, list):
         list_children = list(map(raw_yaml_structure_to_iteration_tree, structure))
         return iteration.CartesianProduct(list_children)

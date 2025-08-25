@@ -294,7 +294,10 @@ def register_default_loader(
     else:
         loader = cast(
             tuple[
-                str, set[str], Callable[[DataTree], Any], Callable[[Any, DataTree], Any]
+                str,
+                set[str],
+                Callable[[DataTree], Any],
+                Callable[[Any, DataTree], Any],
             ],
             loader,
         )
@@ -510,7 +513,8 @@ class FiltersCombination(Filter):
 
     def verifies(self, instrument: BenchInstrument) -> bool:
         return self.operation(
-            self.filter1.verifies(instrument), self.filter2.verifies(instrument)
+            self.filter1.verifies(instrument),
+            self.filter2.verifies(instrument),
         )
 
 
@@ -1145,7 +1149,12 @@ class ExperimentFactory:
                 logger.warning(msg)
 
         compare("loader", si.loader, bi.loader.name, required=True)
-        compare("interfaces", set(si.interfaces), bi.loader.interfaces, required=False)
+        compare(
+            "interfaces",
+            set(si.interfaces),
+            bi.loader.interfaces,
+            required=False,
+        )
         compare("configuration", si.configuration, bi.configuration, required=False)
         compare("id", si.id, bi.loader.get_id(bi.instrument), required=False)
 
@@ -1212,7 +1221,10 @@ class ExperimentFactory:
             else:
                 dst_port = 0
 
-            edge = f"{connection.src}:f{src_port}", f"{connection.dst}:f{dst_port}"
+            edge = (
+                f"{connection.src}:f{src_port}",
+                f"{connection.dst}:f{dst_port}",
+            )
             edges.append(edge)
 
         for instrument, ports in instruments_ports.items():
