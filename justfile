@@ -10,3 +10,7 @@ paper: figures
         openjournals/inara
 
 figures:
+    typst compile {{dir}}/figures/experiment_bench.typ \
+                  {{dir}}/figures/experiment_bench.svg
+    typst compile {{dir}}/figures/acquisition_process.typ \
+                  {{dir}}/figures/acquisition_process.svg
