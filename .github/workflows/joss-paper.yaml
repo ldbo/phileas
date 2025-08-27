@@ -1,0 +1,31 @@
+name: Compile the draft JOSS paper
+on:
+  push:
+    branches:
+      - joss-paper
+  workflow_dispatch:
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    name: Paper Draft
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Typst
+      uses: typst-community/setup-typst@v4
+      with:
+        typst-version: 0.13.1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Build the draft PFD
+      run: uv tool run --from=rust-just just
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: paper
+        path: joss-paper/paper.pdf

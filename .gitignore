@@ -24,3 +24,8 @@ __pycache__
 # Rust output products
 /target/
 /phileas/_rust.*.so
+
+# JOSS paper
+/joss-paper/jats/
+/joss-paper/paper.pdf
+/joss-paper/figures/*.svg

@@ -3,6 +3,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/phileas)](https://pypi.org/project/phileas/)
 [![GitHub Actions Tests Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/tests.yaml?label=tests)](https://github.com/ldbo/phileas/actions/workflows/tests.yaml)
 [![GitHub Actions Build Workflow Status](https://img.shields.io/github/actions/workflow/status/ldbo/phileas/deployment.yaml?label=build)](https://github.com/ldbo/phileas/actions/workflows/deployment.yaml)
+[![Compile the draft JOSS paper](https://github.com/ldbo/phileas/actions/workflows/joss-paper.yaml/badge.svg)](https://github.com/ldbo/phileas/actions/workflows/joss-paper.yaml)
 [![Documentation](https://img.shields.io/readthedocs/phileas)](https://phileas.readthedocs.io/en/latest/)
 [![Code coverage](https://img.shields.io/coverallsCoverage/github/ldbo/phileas)](https://coveralls.io/github/ldbo/phileas)
 [![Tested with Hypothesis](https://img.shields.io/badge/hypothesis-tested-brightgreen.svg)](https://hypothesis.readthedocs.io/)
@@ -18,6 +19,16 @@ describe both the experiment bench and the configurations of its instruments.
 This provides basic building blocks towards the repeatability of such
 experiments. Finally, it provides a transparent workflow that yields datasets
 properly annotated to ease the data analysis stage.
+
+## Draft JOSS paper
+
+This branch contains the draft of a JOSS paper. You can compile it with
+
+```sh
+uv tool run --from=rust-just just
+```
+
+It is automatically compiled by a Github Action workflow. You can see it on the build artifacts that are available [here](https://github.com/ldbo/phileas/actions/workflows/joss-paper.yaml).
 
 ## Installation
 
